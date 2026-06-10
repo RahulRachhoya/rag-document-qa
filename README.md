@@ -1,126 +1,157 @@
 # RAG Document Q&A
 
-Production-ready Retrieval-Augmented Generation system with citation support. Built for legaltech clients who need accurate, cited answers from their documents.
+[![CI](https://github.com/RahulRachhoya/rag-document-qa/actions/workflows/ci.yml/badge.svg)](https://github.com/RahulRachhoya/rag-document-qa/actions/workflows/ci.yml)
+[![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3110/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![HF Spaces](https://img.shields.io/badge/HuggingFace-Spaces-orange.svg)](https://huggingface.co/spaces/RahulRachhoya/rag-document-qa)
+
+Production-grade Retrieval Augmented Generation (RAG) system that answers questions from uploaded documents using hybrid search and Groq LLM.
 
 ## Features
 
-| Feature | Description |
-|---------|-------------|
-| **Multi-format Support** | PDF, DOCX, TXT, MD, HTML |
-| **Semantic Chunking** | Smart document splitting by paragraphs/sections |
-| **BGE-M3 Embeddings** | State-of-the-art multilingual dense embeddings |
-| **Supabase + pgvector** | Serverless vector search with SQL semantics |
-| **Cross-encoder Reranking** | Improve retrieval accuracy with MS-MARCO |
-| **Citation System** | [Source 1], [Source 2] format with page refs |
-| **FastAPI Server** | Full REST API with web demo |
+- **Hybrid retrieval**: dense cosine search (Qdrant) + BM25 sparse search fused with Reciprocal Rank Fusion (RRF)
+- **Cross-encoder reranking**: top-20 candidates reranked by `cross-encoder/ms-marco-MiniLM-L-6-v2`
+- **Groq LLM**: Llama-3.3-70b-versatile for fast, free inference
+- **Multi-format ingestion**: PDF, DOCX, TXT, Markdown
+- **In-memory Qdrant**: zero config for demo; pluggable for cloud Qdrant
+- **FastAPI backend**: REST endpoints for upload, list, delete, query
+- **Gradio demo**: hosted on Hugging Face Spaces
 
 ## Architecture
 
 ```
-┌─────────────┐    ┌──────────────┐    ┌───────────────┐
-│  PDF/DOCX   │───▶│   Loader     │───▶│   Chunker     │
-└─────────────┘    └──────────────┘    └───────────────┘
-                                                │
-                                                ▼
-┌─────────────┐    ┌──────────────┐    ┌───────────────┐
-│   Claude    │◀───│     LLM      │◀───│  Retriever    │
-└─────────────┘    └──────────────┘    └───────────────┘
-       │                                        │
-       │                                        ▼
-       │                               ┌───────────────┐
-       └──────────────────────────────▶│  Vector Store │
-                                        │  (pgvector)   │
-                                        └───────────────┘
+PDF / DOCX / TXT
+       |
+       v
+  [DocumentLoader]
+   pypdf / python-docx
+       |
+       v
+  [RecursiveChunker]
+   512 tokens / 64 overlap
+       |
+       v
+  [MiniLM Embedder]
+   all-MiniLM-L6-v2
+      / \
+     /   \
+    v     v
+[Qdrant]  [BM25]
+ cosine   Okapi
+    \     /
+     \   /
+      v v
+  [RRF Fusion]
+  1/(k + rank)
+       |
+       v
+[Cross-Encoder Rerank]
+ ms-marco-MiniLM-L-6-v2
+       |
+       v
+  [Groq LLM]
+  Llama-3.3-70b-versatile
+       |
+       v
+    Answer
 ```
 
 ## Quick Start
 
 ```bash
-# 1. Clone and setup
+git clone https://github.com/RahulRachhoya/rag-document-qa.git
 cd rag-document-qa
-cp .env.example .env
 
-# 2. Add your API keys to .env
-# SUPABASE_URL=your-supabase-url
-# SUPABASE_ANON_KEY=your-anon-key
-# SUPABASE_SERVICE_KEY=your-service-key
-# AWS_ACCESS_KEY_ID=your-aws-key
-# AWS_SECRET_ACCESS_KEY=your-aws-secret
-# HF_TOKEN=your-huggingface-token
+# Install
+pip install -e ".[dev]"
 
-# 3. Run Supabase SQL (see below)
-# 4. Start server
-pip install -r requirements.txt
-python -m app.main
-```
+# Set your Groq key (free at console.groq.com)
+echo "GROQ_API_KEY=gsk_..." > .env
 
-Visit **http://localhost:8000/demo**
+# Run the API
+uvicorn rag_qa.api.main:app --reload
 
-## Supabase Setup
-
-Run this SQL in your Supabase SQL Editor:
-
-```sql
--- Enable pgvector
-CREATE EXTENSION IF NOT EXISTS vector;
-
--- Create table
-CREATE TABLE document_chunks (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    document_id TEXT NOT NULL,
-    chunk_index INTEGER NOT NULL,
-    content TEXT NOT NULL,
-    embedding vector(1024),
-    metadata JSONB DEFAULT '{}'::jsonb,
-    created_at TIMESTAMPTZ DEFAULT NOW()
-);
-
--- HNSW index
-CREATE INDEX document_chunks_embedding_idx 
-ON document_chunks 
-USING hnsw (embedding vector_cosine_ops)
-WITH (m = 16, ef_construction = 64);
-
--- RLS
-ALTER TABLE document_chunks ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow anon reads" ON document_chunks FOR SELECT USING (true);
-CREATE POLICY "Allow anon inserts" ON document_chunks FOR INSERT WITH CHECK (true);
-CREATE POLICY "Allow anon deletes" ON document_chunks FOR DELETE USING (true);
+# Or run the Gradio demo locally
+python hf_demo/app.py
 ```
 
 ## API Endpoints
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
+| Method | Path | Description |
+|--------|------|-------------|
 | GET | `/health` | Health check |
-| GET | `/demo` | Web UI |
-| POST | `/documents/upload` | Upload & index document |
-| GET | `/documents` | List all documents |
-| DELETE | `/documents/{id}` | Delete document |
-| POST | `/query` | Ask a question |
-| GET | `/query?q=` | Simple GET query |
+| POST | `/documents/upload` | Upload and ingest a document |
+| GET | `/documents/` | List all documents |
+| DELETE | `/documents/{doc_id}` | Delete a document |
+| POST | `/query/` | Ask a question |
 
-## Pricing for Clients
+### Example
 
-| Market | Price |
-|--------|-------|
-| **Indian Legal Firms** | ₹3-8 Lakhs |
-| **US Law Firms** | $15,000-50,000 |
+```bash
+# Upload a document
+curl -X POST http://localhost:8000/documents/upload \
+  -F "file=@myreport.pdf"
 
-**Case study metrics:**
-- *"Reduced contract review time by 60%"*
-- *"95% accuracy on Q&A from legal documents"*
-- *"Processed 10,000+ pages in 3 minutes"*
+# Ask a question
+curl -X POST http://localhost:8000/query/ \
+  -H "Content-Type: application/json" \
+  -d '{"question": "What are the main findings?", "top_k": 5}'
+```
 
-## Demo
+## Project Layout
 
-![RAG Demo](https://via.placeholder.com/800x400?text=RAG+Document+QA+Demo)
+```
+src/rag_qa/
+  config.py          pydantic-settings BaseSettings
+  models.py          Pydantic request/response models
+  pipeline.py        RAGPipeline (ingest + query)
+  services/
+    loader.py        PDF/DOCX/TXT document loading
+    chunker.py       Recursive character text splitter
+    embedder.py      SentenceTransformers all-MiniLM-L6-v2
+    vector_store.py  Qdrant client (in-memory or cloud)
+    retriever.py     Hybrid dense + BM25 + RRF
+    reranker.py      Cross-encoder reranking
+    llm.py           Groq Llama chat completion
+  api/
+    main.py          FastAPI app
+    routes/
+      health.py
+      documents.py
+      query.py
+tests/unit/          Mock-based pytest suite (no API keys needed)
+hf_demo/app.py       Gradio two-tab demo for HF Spaces
+```
 
-## Tech Stack
+## Running Tests
 
-- **LLM**: Claude 3.5 Sonnet via AWS Bedrock
-- **Embeddings**: BGE-M3 (1024-dim)
-- **Reranker**: MS-MARCO MiniLM
-- **Vector DB**: Supabase pgvector
-- **Chunking**: Semantic + fixed-size overlap
-- **Framework**: FastAPI + Uvicorn
+```bash
+pytest tests/unit -v
+```
+
+Tests use mocked LLM calls and in-memory Qdrant -- no API keys required.
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GROQ_API_KEY` | (required) | Groq API key from console.groq.com |
+| `GROQ_MODEL` | `llama-3.3-70b-versatile` | Groq model name |
+| `QDRANT_URL` | `""` (in-memory) | Qdrant cloud URL |
+| `QDRANT_API_KEY` | `""` | Qdrant cloud API key |
+| `CHUNK_SIZE` | `512` | Characters per chunk |
+| `CHUNK_OVERLAP` | `64` | Overlap between chunks |
+| `RERANKER_ENABLED` | `true` | Enable cross-encoder reranking |
+
+## HF Spaces Demo
+
+Live demo: [huggingface.co/spaces/RahulRachhoya/rag-document-qa](https://huggingface.co/spaces/RahulRachhoya/rag-document-qa)
+
+To deploy your own:
+1. Fork this repo
+2. Add `HF_TOKEN` as a GitHub Actions secret
+3. Push to `main` -- CI will deploy automatically
+
+## License
+
+MIT

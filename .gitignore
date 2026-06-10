@@ -1,36 +1,41 @@
-# Python
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
-*.pyo
-*.egg-info/
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Distribution / packaging
 dist/
 build/
-.eggs/
-venv/
-.venv/
-env/
+*.egg-info/
 
 # Environment
 .env
-*.env
+.env.local
 
-# IDE
+# Uploads and data
+uploads/
+documents/
+*.pdf
+*.docx
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Editor
 .vscode/
 .idea/
 *.swp
 
-# OS
-.DS_Store
-Thumbs.db
+# Models cache (large)
+.cache/
+models/
 
-# Logs
-*.log
-logs/
-
-# Uploads
-uploads/*
-!uploads/.gitkeep
-
-# Documents
-documents/*
-!documents/.gitkeep
+# Ruff
+.ruff_cache/

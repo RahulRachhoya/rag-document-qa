@@ -1,0 +1,87 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Lint with ruff
+        run: ruff check src/
+
+      - name: Run unit tests
+        run: pytest tests/unit -v --tb=short
+
+  deploy-hf:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Push to Hugging Face Spaces
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: |
+          if [ -n "$HF_TOKEN" ]; then
+            pip install huggingface_hub
+            python - <<'EOF'
+          from huggingface_hub import HfApi
+          import os, pathlib
+
+          api = HfApi(token=os.environ["HF_TOKEN"])
+          repo_id = "RahulRachhoya/rag-document-qa"
+
+          # Ensure space exists
+          try:
+              api.create_repo(repo_id=repo_id, repo_type="space", space_sdk="gradio", exist_ok=True)
+          except Exception as e:
+              print(f"Repo creation skipped: {e}")
+
+          # Upload hf_demo/ contents + src/ package
+          hf_demo = pathlib.Path("hf_demo")
+          for f in hf_demo.iterdir():
+              api.upload_file(
+                  path_or_fileobj=str(f),
+                  path_in_repo=f.name,
+                  repo_id=repo_id,
+                  repo_type="space",
+              )
+
+          # Upload src package so hf_demo/app.py can import it
+          src_dir = pathlib.Path("src")
+          for f in src_dir.rglob("*.py"):
+              api.upload_file(
+                  path_or_fileobj=str(f),
+                  path_in_repo=str(f),
+                  repo_id=repo_id,
+                  repo_type="space",
+              )
+          print("Deployed to HF Spaces.")
+          EOF
+          else
+            echo "HF_TOKEN not set - skipping HF deploy"
+          fi

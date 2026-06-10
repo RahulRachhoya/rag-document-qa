@@ -1,0 +1,8 @@
+gradio>=4.0
+sentence-transformers
+qdrant-client
+rank-bm25
+pypdf
+python-docx
+groq
+pydantic-settings
