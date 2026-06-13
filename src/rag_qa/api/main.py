@@ -51,15 +51,27 @@ app.include_router(query.router)
 # API routes (/health, /documents, /query, /docs) take precedence.
 # This makes visiting the Render URL show the polished UI by default.
 try:
-    # Calculate ui/ relative to the installed package layout (works in Docker + local dev)
-    base_dir = Path(__file__).resolve().parent.parent.parent.parent
-    ui_dir = base_dir / "ui"
+    # Robust path discovery:
+    # - /app/ui is the Docker/production path (WORKDIR /app + final COPY . . after pip install)
+    # - Other candidates for local dev (src layout, cwd, etc.)
+    candidates = [
+        Path("/app/ui"),  # Production Docker layout (most important for Render)
+        Path(__file__).resolve().parent.parent.parent.parent / "ui",  # src-layout dev
+        Path.cwd() / "ui",  # running from project root
+        Path(__file__).resolve().parents[3] / "ui",  # fallback
+    ]
     
-    if ui_dir.exists() and (ui_dir / "index.html").exists():
+    ui_dir = None
+    for candidate in candidates:
+        if candidate.exists() and (candidate / "index.html").exists():
+            ui_dir = candidate
+            break
+    
+    if ui_dir:
         app.mount("/", StaticFiles(directory=str(ui_dir), html=True), name="ui")
         logger.info(f"Serving nice UI from {ui_dir}")
     else:
-        logger.warning("ui/index.html not found — nice UI not mounted. Falling back to API only.")
+        logger.warning("ui/index.html not found in any candidate location — nice UI not mounted. Falling back to API only.")
 except Exception as e:
     logger.warning(f"Could not mount nice UI: {e}")
 
