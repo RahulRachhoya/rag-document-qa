@@ -152,6 +152,118 @@ To deploy your own:
 2. Add `HF_TOKEN` as a GitHub Actions secret
 3. Push to `main` -- CI will deploy automatically
 
+<<<<<<< Updated upstream
+=======
+## Free Deployment (Showcase Your Skills)
+
+This project is designed to be deployed completely for free so you can share a live API + beautiful demo in your portfolio.
+
+**Recommended free stack (2026):**
+- **Backend API** → [Render.com](https://render.com) free web service (Docker)
+- **Gradio UI** → Hugging Face Spaces (already automated)
+- **CI/CD** → GitHub Actions (tests + deploy both targets on every push to `main`)
+
+### Why this combination?
+- Render offers a true free tier for Docker web services (no credit card required).
+- GitHub Actions is free/unlimited for public repos.
+- You get two public URLs: a real FastAPI + the polished Gradio interface.
+- Declarative `render.yaml` shows Infrastructure-as-Code skills.
+
+### One-time Setup (Render + Secrets)
+
+1. **Create a free Render account** at https://dashboard.render.com/register
+2. In Render:
+   - New > Web Service
+   - Connect your GitHub repo (`rag-document-qa`)
+   - Render should auto-detect the `Dockerfile` and `render.yaml`
+   - Choose **Free** instance type
+   - In the Environment section add:
+     - `GROQ_API_KEY` (get a free key at https://console.groq.com/keys)
+     - `GROQ_MODEL=llama-3.3-70b-versatile` (or leave default)
+   - Deploy. Your API will be live at `https://your-service-name.onrender.com`
+3. (Recommended) Create a Deploy Hook:
+   - Go to your service → Settings → Deploy Hook
+   - Copy the long URL
+   - In your GitHub repo go to Settings → Secrets and variables → Actions
+   - Add new secret: `RENDER_DEPLOY_HOOK` = the URL you copied
+
+### How the Full CI/CD Works
+
+```mermaid
+graph LR
+    A[Push / PR to main] --> B[GitHub Actions]
+    B --> C{Tests + Ruff}
+    C -->|PR| D[Only test job]
+    C -->|main push| E[deploy-hf job]
+    C -->|main push| F[deploy-render job]
+    E --> G[HF Spaces Gradio updated]
+    F --> H[Render rebuilds from Dockerfile]
+```
+
+- Every PR/push: runs the `test` job (lint + `pytest tests/unit`).
+- Push to `main`:
+  - After tests pass → `deploy-hf` (existing) updates your HF Space.
+  - After tests pass → `deploy-render` curls your `RENDER_DEPLOY_HOOK` (new) → Render starts a new deploy using the `render.yaml` + `Dockerfile`.
+
+You can also connect the repo directly in Render for auto-deploys; the hook gives you explicit control from CI.
+
+### Limitations of the Free Tier (be honest in your showcase)
+
+- **Spin-down**: Render free instances sleep after ~15 minutes of inactivity. First request after sleep has a cold start (10-40s while the embedding model downloads).
+- **Ephemeral storage**: In-memory Qdrant means any documents you upload are lost when the instance restarts. This is fine for a demo ("upload a doc and ask questions right now").
+- **Resource limits**: Free tier has modest CPU/RAM. The sentence-transformers model loads on cold start.
+- **No custom domain** on free (you get a nice `onrender.com` subdomain).
+
+These are standard for truly free tiers and show you understand production trade-offs.
+
+### Using Your Deployed Services
+
+- **API**: `https://<your-render-service>.onrender.com`
+  - `GET /health`
+  - `POST /documents/upload` (multipart file)
+  - `POST /query/` (JSON `{ "question": "...", "top_k": 5 }`)
+- **Gradio UI**: Your existing HF Space (or the one auto-deployed by CI).
+
+You can even point the Gradio demo at the live Render API later by changing a few lines in `hf_demo/app.py` (optional enhancement).
+
+### Alternative Free Platforms
+
+If you prefer not to use Render, the same pattern works with:
+- **Fly.io** (add a `fly.toml` + GitHub Action using `flyctl`)
+- **Railway** (great DX, but free tier changed to usage-based credits in 2023+)
+
+Render currently gives the most generous "set and forget" free Docker tier for demos in 2026.
+
+### Beautiful & Usable Frontend (ui/index.html)
+
+In addition to the API and the Gradio demo, this repo now ships a **modern, production-feeling single-file UI** (`ui/index.html`):
+
+- Two-panel responsive layout (Documents + Ask)
+- Drag & drop uploads + real-time document cards with delete
+- Clean question input + top-k slider
+- Nicely formatted answers + source cards (filename, chunk #, relevance score, full snippet)
+- Live API base override (pre-filled with your Render URL)
+- Toasts, spinners, empty states, keyboard support
+- Zero build step (Tailwind via CDN)
+
+**On the live deployment** (https://rag-document-qa-22uh.onrender.com), the root path now serves this nice UI automatically.
+
+You can also open it locally:
+```bash
+# macOS
+open ui/index.html
+# Windows
+start ui/index.html
+# Linux
+xdg-open ui/index.html
+```
+
+Make sure the "API" field points at your Render URL (or your local dev server).
+
+This is the primary "user-facing" experience people will see when you share the link — clean, intuitive, and showcases the full feature set properly.
+
+---
+
 ## License
 
 MIT
