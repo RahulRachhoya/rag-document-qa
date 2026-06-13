@@ -17,6 +17,7 @@ dependencies = [
     "pypdf",
     "python-docx",
     "python-multipart",
+    "psutil",
 ]
 
 [project.optional-dependencies]
@@ -36,3 +37,7 @@ ignore = ["E501"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+markers = [
+    "live: marks tests as live/E2E against a real deployed instance (requires GROQ_API_KEY and usually a LIVE_API_BASE env var). Run with: pytest -m live",
+    "slow: marks tests as slow (e.g. real model downloads or Groq calls)"
+]
