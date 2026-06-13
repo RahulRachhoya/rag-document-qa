@@ -11,8 +11,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml ./
 COPY src/ src/
 
-# Install the package
-RUN pip install --no-cache-dir -e ".[dev]"
+# Install the package (prod only - no dev extras like pytest/ruff)
+RUN pip install --no-cache-dir .
 
 # Copy remaining files
 COPY . .

@@ -85,3 +85,22 @@ jobs:
           else
             echo "HF_TOKEN not set - skipping HF deploy"
           fi
+
+  deploy-render:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Trigger Render Deploy Hook
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          if [ -n "$RENDER_DEPLOY_HOOK" ]; then
+            echo "Triggering Render deploy..."
+            curl -X POST "$RENDER_DEPLOY_HOOK"
+            echo "Render deploy hook called. Check Render dashboard for build logs."
+          else
+            echo "RENDER_DEPLOY_HOOK not set - skipping Render deploy"
+            echo "Create a Deploy Hook in your Render service settings and add it as a GitHub secret."
+          fi

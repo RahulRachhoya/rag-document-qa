@@ -152,8 +152,11 @@ To deploy your own:
 2. Add `HF_TOKEN` as a GitHub Actions secret
 3. Push to `main` -- CI will deploy automatically
 
+<<<<<<< HEAD
 <<<<<<< Updated upstream
 =======
+=======
+>>>>>>> 5daf2e09596515092f372f2bc6f18a7243d79faf
 ## Free Deployment (Showcase Your Skills)
 
 This project is designed to be deployed completely for free so you can share a live API + beautiful demo in your portfolio.

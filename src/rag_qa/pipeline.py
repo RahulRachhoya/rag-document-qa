@@ -93,8 +93,8 @@ class RAGPipeline:
             return False
         self._vector_store.delete_by_doc_id(doc_id)
         del self._docs[doc_id]
-        # Rebuild BM25 index without the deleted doc's chunks
-        self._retriever.clear()
+        # Remove the deleted doc's chunks from the BM25 index (dense side already cleaned in Qdrant)
+        self._retriever.remove_documents_by_doc_id(doc_id)
         return True
 
     # ------------------------------------------------------------------

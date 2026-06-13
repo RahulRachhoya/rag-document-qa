@@ -1,0 +1,22 @@
+# Render Infrastructure as Code (IaC)
+# This file defines the free web service for the FastAPI RAG backend.
+# Deploy via: connect repo in Render dashboard (it will detect this file)
+# or trigger via GitHub Actions deploy hook (see ci.yml).
+
+services:
+  - type: web
+    name: rag-document-qa-api
+    env: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: GROQ_MODEL
+        value: llama-3.3-70b-versatile
+      # Add the following as a *secret* (not value) in the Render dashboard:
+      # - key: GROQ_API_KEY
+      #   sync: false   # or set via dashboard
+      #
+      # The app will use in-memory Qdrant by default (data is ephemeral on free tier).
+      # For a persistent demo you can later add QDRANT_URL + QDRANT_API_KEY
+      # from a free/limited Qdrant Cloud account.
