@@ -157,7 +157,13 @@ class RAGPipeline:
 
     def _query_sync(self, question: str, top_k: int = 5) -> dict:
         logger.info("Query: %.80s", question)
-        top_n = self._settings.retrieval_top_n_rerank
+        # Respect low_memory mode or disabled reranker: use smaller candidate pool (retrieval_top_k)
+        # to avoid loading/processing excess data; only use large rerank pool (retrieval_top_n_rerank)
+        # when reranker is both enabled and not low-memory.
+        if getattr(self._settings, "low_memory", False) or not self._settings.reranker_enabled:
+            top_n = self._settings.retrieval_top_k
+        else:
+            top_n = self._settings.retrieval_top_n_rerank
 
         # 1. Hybrid retrieval
         candidates = self._retriever.search(question, top_k=top_n, top_n=top_n)

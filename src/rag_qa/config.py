@@ -31,9 +31,12 @@ class Settings(BaseSettings):
     retrieval_top_k: int = 5
     retrieval_top_n_rerank: int = 20
 
+    # Memory optimization (for low-RAM / free tiers)
+    low_memory: bool = False
+
     # Cross-encoder reranker
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-    reranker_enabled: bool = True
+    reranker_enabled: bool = False  # opt-in (esp. for free/low-memory tiers); set True via env to enable heavy CrossEncoder
 
     # API
     upload_dir: str = "uploads"

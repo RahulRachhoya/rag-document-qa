@@ -26,7 +26,15 @@ class Embedder:
             from sentence_transformers import SentenceTransformer
 
             logger.info("Loading embedding model: %s", self.model_name)
-            self._model = SentenceTransformer(self.model_name)
+            self._model = SentenceTransformer(self.model_name, device="cpu")
+            try:
+                import psutil
+                import os
+                rss_mb = psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024)
+                logger.info("Memory after embedder load: %.1f MB (RSS)", rss_mb)
+            except Exception:
+                # psutil optional; memory logging best-effort only (no new deps)
+                pass
         return self._model
 
     def embed(self, texts: list[str]) -> list[list[float]]:

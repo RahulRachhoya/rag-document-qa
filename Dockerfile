@@ -11,6 +11,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY pyproject.toml ./
 COPY src/ src/
 
+# CPU-only Torch (critical for Render free tier ~512MB RAM to avoid CUDA bloat + lower runtime memory).
+# Install before the project so sentence-transformers reuses the CPU wheel.
+RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu torch
+
+# Thread limits + tokenizer to keep BLAS/parallel libs from ballooning memory on constrained 512MB instance.
+ENV OMP_NUM_THREADS=1 \
+    MKL_NUM_THREADS=1 \
+    OPENBLAS_NUM_THREADS=1 \
+    NUMEXPR_NUM_THREADS=1 \
+    TOKENIZERS_PARALLELISM=false
+
 # Install the package (prod only - no dev extras like pytest/ruff)
 RUN pip install --no-cache-dir .
 
@@ -29,4 +40,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-CMD ["uvicorn", "rag_qa.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "rag_qa.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
