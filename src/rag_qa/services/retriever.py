@@ -41,6 +41,29 @@ class HybridRetriever:
         self._corpus_meta = []
         self._bm25 = None
 
+    def remove_documents_by_doc_id(self, doc_id: str) -> int:
+        """Remove all chunks belonging to the given doc_id from the BM25 corpus.
+        Returns the number of chunks removed.
+        """
+        if not self._corpus:
+            return 0
+
+        original_len = len(self._corpus)
+        kept_corpus: list[str] = []
+        kept_meta: list[dict] = []
+        for text, meta in zip(self._corpus, self._corpus_meta):
+            if meta.get("doc_id") != doc_id:
+                kept_corpus.append(text)
+                kept_meta.append(meta)
+
+        if len(kept_corpus) == original_len:
+            return 0
+
+        self._corpus = kept_corpus
+        self._corpus_meta = kept_meta
+        self._bm25 = None  # force rebuild on next search
+        return original_len - len(self._corpus)
+
     # ------------------------------------------------------------------
     # Search
     # ------------------------------------------------------------------

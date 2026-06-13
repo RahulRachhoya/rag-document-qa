@@ -116,12 +116,30 @@ class TestRAGPipelineQuery:
 
     @pytest.mark.asyncio
     async def test_delete_document_removes_it(self, pipeline_with_mock_llm):
-        path = write_temp_txt("Content to delete. " * 10)
-        ingest_result = await pipeline_with_mock_llm.ingest(path, "delete_me.txt")
-        doc_id = ingest_result["doc_id"]
+        # Ingest two documents so we can prove the survivor still works after delete
+        path_del = write_temp_txt("This document will be deleted. " * 10)
+        del_result = await pipeline_with_mock_llm.ingest(path_del, "delete_me.txt")
+        del_doc_id = del_result["doc_id"]
 
-        deleted = pipeline_with_mock_llm.delete_document(doc_id)
+        path_keep = write_temp_txt("Python is a programming language used for many things. " * 10)
+        keep_result = await pipeline_with_mock_llm.ingest(path_keep, "keep.txt")
+        keep_doc_id = keep_result["doc_id"]
+
+        # Delete the first one
+        deleted = pipeline_with_mock_llm.delete_document(del_doc_id)
         assert deleted is True
 
         docs = pipeline_with_mock_llm.list_documents()
-        assert not any(d["doc_id"] == doc_id for d in docs)
+        assert not any(d["doc_id"] == del_doc_id for d in docs)
+        assert any(d["doc_id"] == keep_doc_id for d in docs)
+
+        # Query about the kept document — this exercises HybridRetriever after removal.
+        # The remaining doc must still be retrievable (both dense + BM25 corpus for it must survive).
+        result = await pipeline_with_mock_llm.query("What is Python?")
+        assert result["answer"] == "Mocked answer from the document."
+        assert isinstance(result["sources"], list)
+        assert len(result["sources"]) > 0
+        # The source(s) should come from the kept document, not the deleted one
+        for s in result["sources"]:
+            assert s["doc_id"] == keep_doc_id
+            assert "Python" in s.get("text", "") or "programming" in s.get("text", "").lower()
