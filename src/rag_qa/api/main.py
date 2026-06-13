@@ -6,6 +6,11 @@ import logging
 import os
 from pathlib import Path
 
+try:
+    import psutil
+except Exception:
+    psutil = None  # best effort for memory logging on constrained envs
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -40,6 +45,12 @@ app.add_middleware(
 async def startup_event() -> None:
     """Initialise shared resources on startup."""
     documents_route.set_pipeline(pipeline)
+    if psutil:
+        try:
+            rss_mb = psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024)
+            logger.info("Startup memory: %.1f MB (RSS) | reranker_enabled=%s | low_memory=%s", rss_mb, settings.reranker_enabled, getattr(settings, "low_memory", False))
+        except Exception:
+            pass
     logger.info("RAG pipeline ready (model=%s)", settings.groq_model)
 
 
