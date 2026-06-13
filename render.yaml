@@ -42,8 +42,6 @@ services:
         value: llama-3.3-70b-versatile
       - key: RERANKER_ENABLED
         value: "false"
-      - key: CHUNK_SIZE
-        value: "256"
       # Add the following as a *secret* (not value) in the Render dashboard:
       # - key: GROQ_API_KEY
       #   sync: false   # or set via dashboard (recommended)
