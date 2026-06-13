@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import logging
+import os
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from rag_qa import __version__
 from rag_qa.api.routes import documents as documents_route
@@ -43,6 +46,22 @@ async def startup_event() -> None:
 app.include_router(health.router)
 app.include_router(documents_route.router)
 app.include_router(query.router)
+
+# Serve the nice user-friendly UI (ui/index.html) at the root path.
+# API routes (/health, /documents, /query, /docs) take precedence.
+# This makes visiting the Render URL show the polished UI by default.
+try:
+    # Calculate ui/ relative to the installed package layout (works in Docker + local dev)
+    base_dir = Path(__file__).resolve().parent.parent.parent.parent
+    ui_dir = base_dir / "ui"
+    
+    if ui_dir.exists() and (ui_dir / "index.html").exists():
+        app.mount("/", StaticFiles(directory=str(ui_dir), html=True), name="ui")
+        logger.info(f"Serving nice UI from {ui_dir}")
+    else:
+        logger.warning("ui/index.html not found — nice UI not mounted. Falling back to API only.")
+except Exception as e:
+    logger.warning(f"Could not mount nice UI: {e}")
 
 if __name__ == "__main__":
     import uvicorn
