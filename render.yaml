@@ -2,6 +2,33 @@
 # This file defines the free web service for the FastAPI RAG backend.
 # Deploy via: connect repo in Render dashboard (it will detect this file)
 # or trigger via GitHub Actions deploy hook (see ci.yml).
+#
+# IMPORTANT: 512MB RAM free tier issue
+# Render free plan has tight ~512MB memory limits. Without mitigations the
+# embedding model (sentence-transformers) + optional reranker + Torch easily OOMs
+# on cold start or under load.
+#
+# Fixes applied for free IaC:
+# - RERANKER_ENABLED=false (see below): disables cross-encoder reranker by default
+#   on the free Render service (saves ~100-200MB). Reranker still works if you
+#   explicitly set RERANKER_ENABLED=true on a higher-tier instance.
+# - Dockerfile uses CPU-only Torch wheel (no CUDA bloat) + installs before the
+#   project so sentence-transformers picks the CPU variant.
+# - Dockerfile sets BLAS thread limits (OMP_NUM_THREADS=1, MKL_NUM_THREADS=1,
+#   OPENBLAS_NUM_THREADS=1, NUMEXPR_NUM_THREADS=1) + TOKENIZERS_PARALLELISM=false
+#   to prevent parallel libs from exploding memory.
+# - uvicorn --workers 1 (single worker) + explicit device="cpu" in Embedder and
+#   Reranker services.
+# See Dockerfile, src/rag_qa/config.py (default remains true for local/full use),
+# src/rag_qa/services/embedder.py, reranker.py, and README "OOM Troubleshooting".
+#
+# Secrets note:
+# - GROQ_API_KEY must be added as a *secret* (not via value: here) in the Render
+#   dashboard under Environment. Never commit real keys.
+# - HF_TOKEN is *not* used or needed for the Render API / this IaC at all.
+#   HF_TOKEN is only a GitHub Actions secret for the CI job that deploys the
+#   Gradio demo to Hugging Face Spaces (see .github/workflows/ci.yml and
+#   live test file). Users must supply/update their own HF_TOKEN for HF demo CI.
 
 services:
   - type: web
@@ -13,9 +40,13 @@ services:
     envVars:
       - key: GROQ_MODEL
         value: llama-3.3-70b-versatile
+      - key: RERANKER_ENABLED
+        value: "false"
+      - key: CHUNK_SIZE
+        value: "256"
       # Add the following as a *secret* (not value) in the Render dashboard:
       # - key: GROQ_API_KEY
-      #   sync: false   # or set via dashboard
+      #   sync: false   # or set via dashboard (recommended)
       #
       # The app will use in-memory Qdrant by default (data is ephemeral on free tier).
       # For a persistent demo you can later add QDRANT_URL + QDRANT_API_KEY

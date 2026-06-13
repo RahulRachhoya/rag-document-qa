@@ -1,5 +1,22 @@
 name: CI
 
+# CI for rag-document-qa
+# - test job: always runs (lint + unit/integration tests, no secrets needed)
+# - deploy-hf: on main push, only if HF_TOKEN secret is present. HF_TOKEN is used
+#   SOLELY for pushing the Gradio demo to Hugging Face Spaces. It is provided and
+#   maintained by the user/fork owner. HF_TOKEN is NEVER needed for Render API
+#   deploys, local runs, or runtime of the FastAPI backend.
+# - deploy-render: on main push, triggers the user's Render deploy hook (set as
+#   RENDER_DEPLOY_HOOK GitHub secret). This causes Render to redeploy using
+#   render.yaml + Dockerfile (which include the 512MB mitigations: reranker
+#   disabled by default in free IaC, CPU-only torch, thread limits, --workers 1).
+#
+# See README (Free Deployment, HF Spaces Demo, OOM Troubleshooting), render.yaml
+# (detailed IaC comments), and tests/live/test_full_live_pipeline.py (HF_TOKEN note).
+#
+# No HF_TOKEN or other secrets are required to run tests or for the core Render
+# backend to function once deployed.
+
 on:
   push:
     branches: [main]
@@ -28,13 +45,17 @@ jobs:
       - name: Lint with ruff
         run: ruff check src/
 
-      - name: Run unit tests
-        run: pytest tests/unit -v --tb=short
+      - name: Run full test system (unit + integration + UI serving)
+        run: pytest tests/ -q --tb=line --maxfail=10
 
   deploy-hf:
     needs: test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # HF_TOKEN (if present) is used only here for the HF Gradio demo deploy.
+    # This job is skipped gracefully if the secret is missing. The token is
+    # only for CI Gradio/HF Spaces; it has no relation to the 512MB Render
+    # free tier or RAG API runtime.
 
     steps:
       - uses: actions/checkout@v4
@@ -90,6 +111,10 @@ jobs:
     needs: test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # This triggers a redeploy on Render using the IaC in render.yaml.
+    # The actual 512MB fixes (reranker=false in free IaC, CPU torch etc.) live
+    # in render.yaml + Dockerfile (see those files and README OOM section).
+    # RENDER_DEPLOY_HOOK secret is user-provided via Render dashboard + GH secrets.
 
     steps:
       - name: Trigger Render Deploy Hook

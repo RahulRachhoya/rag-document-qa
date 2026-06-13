@@ -141,7 +141,7 @@ Tests use mocked LLM calls and in-memory Qdrant -- no API keys required.
 | `QDRANT_API_KEY` | `""` | Qdrant cloud API key |
 | `CHUNK_SIZE` | `512` | Characters per chunk |
 | `CHUNK_OVERLAP` | `64` | Overlap between chunks |
-| `RERANKER_ENABLED` | `true` | Enable cross-encoder reranking |
+| `RERANKER_ENABLED` | `true` | Enable cross-encoder reranking. **In free Render IaC (`render.yaml`)** this is overridden to `false` by default to avoid OOM on the 512MB tier. Set to `true` locally or on paid plans if desired. |
 
 ## HF Spaces Demo
 
@@ -149,14 +149,11 @@ Live demo: [huggingface.co/spaces/RahulRachhoya/rag-document-qa](https://hugging
 
 To deploy your own:
 1. Fork this repo
-2. Add `HF_TOKEN` as a GitHub Actions secret
+2. Add `HF_TOKEN` as a GitHub Actions secret (a personal HF token with write permissions to Spaces; you must create and maintain this yourself)
 3. Push to `main` -- CI will deploy automatically
 
-<<<<<<< HEAD
-<<<<<<< Updated upstream
-=======
-=======
->>>>>>> 5daf2e09596515092f372f2bc6f18a7243d79faf
+**HF_TOKEN note (very important):** `HF_TOKEN` is used *only* by the GitHub Actions CI job (`deploy-hf`) to push the Gradio demo to Hugging Face Spaces. It is **not required or used at runtime** for the Render FastAPI service, local runs, or the live `/query/` etc. endpoints. The Render API deployment works completely without any HF_TOKEN. See also the note in `tests/live/test_full_live_pipeline.py` and `render.yaml` comments.
+
 ## Free Deployment (Showcase Your Skills)
 
 This project is designed to be deployed completely for free so you can share a live API + beautiful demo in your portfolio.
@@ -180,9 +177,10 @@ This project is designed to be deployed completely for free so you can share a l
    - Connect your GitHub repo (`rag-document-qa`)
    - Render should auto-detect the `Dockerfile` and `render.yaml`
    - Choose **Free** instance type
-   - In the Environment section add:
-     - `GROQ_API_KEY` (get a free key at https://console.groq.com/keys)
-     - `GROQ_MODEL=llama-3.3-70b-versatile` (or leave default)
+   - In the Environment section add your secrets and vars (use **Secret** type for keys in the Render UI):
+     - `GROQ_API_KEY` as a secret (get a free key at https://console.groq.com/keys)
+     - `GROQ_MODEL=llama-3.3-70b-versatile` (or leave default; `render.yaml` also sets this)
+     - (The `render.yaml` IaC also forces `RERANKER_ENABLED=false` for the free tier -- see below)
    - Deploy. Your API will be live at `https://your-service-name.onrender.com`
 3. (Recommended) Create a Deploy Hook:
    - Go to your service → Settings → Deploy Hook
@@ -214,10 +212,31 @@ You can also connect the repo directly in Render for auto-deploys; the hook give
 
 - **Spin-down**: Render free instances sleep after ~15 minutes of inactivity. First request after sleep has a cold start (10-40s while the embedding model downloads).
 - **Ephemeral storage**: In-memory Qdrant means any documents you upload are lost when the instance restarts. This is fine for a demo ("upload a doc and ask questions right now").
-- **Resource limits**: Free tier has modest CPU/RAM. The sentence-transformers model loads on cold start.
+- **Resource limits / 512MB issue**: Free tier has modest CPU/RAM (~512MB). The embedding model + (if enabled) cross-encoder reranker + Torch can easily trigger OOM on cold starts or concurrent load. 
+  **Fixes applied via IaC + Dockerfile** (see `render.yaml` comments and `Dockerfile` for details):
+  - **Reranker disabled by default in free IaC**: `render.yaml` sets `RERANKER_ENABLED=false` (saves substantial RAM; the reranker is still available on paid tiers or locally by overriding the env var).
+  - CPU-only Torch wheel in Dockerfile (installed from https://download.pytorch.org/whl/cpu before project deps so sentence-transformers uses the slim CPU variant, avoiding CUDA libs).
+  - Thread limits in Dockerfile: `OMP_NUM_THREADS=1`, `MKL_NUM_THREADS=1`, `OPENBLAS_NUM_THREADS=1`, `NUMEXPR_NUM_THREADS=1`, `TOKENIZERS_PARALLELISM=false`.
+  - Single worker: `uvicorn ... --workers 1`.
+  - Explicit `device="cpu"` in `src/rag_qa/services/embedder.py` and `reranker.py`.
+  - Models lazy-load on first use / cold start.
 - **No custom domain** on free (you get a nice `onrender.com` subdomain).
 
-These are standard for truly free tiers and show you understand production trade-offs.
+These are standard for truly free tiers and show you understand production trade-offs. The declarative `render.yaml` + these mitigations demonstrate solid IaC and ops awareness.
+
+### OOM Troubleshooting (512MB Free Tier)
+
+If you see out-of-memory errors (500s on cold start, "Killed" in Render logs, or healthcheck failures during model load):
+
+1. **Confirm reranker is disabled on your Render service**: In Render dashboard → Environment, ensure `RERANKER_ENABLED` is absent or explicitly `false`. The committed `render.yaml` sets it to `false` for the free plan. Re-deploy after changing `render.yaml` if you edited it.
+2. **Check the Dockerfile mitigations are present** (CPU torch install, thread env vars, `--workers 1`).
+3. **Warm-up / cold start**: First request after sleep can take 30-90s (model download + load). The live tests and health checks include warm-up retries. Use `/health` endpoint.
+4. **Reduce load**: Free tier is single-core-ish; avoid parallel test clients or very large docs during initial testing.
+5. **Monitor logs**: In Render dashboard, look for "OOM", "Memory limit", "torch", or "sentence-transformers" lines.
+6. **Upgrade path (if demo succeeds)**: Move to Render paid Starter plan or self-host. Or disable reranker + keep using free (recommended for portfolio demos).
+7. **Local reproduction**: `RERANKER_ENABLED=true` locally (or in Docker without the CPU/thread caps) will use more RAM but should not OOM on a dev machine.
+
+See also `render.yaml` (top comments), `Dockerfile`, `src/rag_qa/config.py`, and the live test file for related notes. The 512MB constraints + fixes are intentional and fully documented so forks can reproduce a working free deployment.
 
 ### Using Your Deployed Services
 
