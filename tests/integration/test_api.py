@@ -197,10 +197,10 @@ class TestStaticUIFeature:
         assert resp.status_code == 200
         assert "text/html" in resp.headers.get("content-type", "")
         html = resp.text
-        # Key markers from our nice UI
+        # Key markers from the static UI
         assert "RAG Document Q&amp;A" in html or "RAG Document Q&A" in html
-        assert "DOCUMENTS" in html
-        assert "ASK A QUESTION" in html
+        assert "Documents" in html
+        assert "Ask a question" in html or "ask a question" in html.lower()
         assert "dropzone" in html.lower() or "drag" in html.lower()
 
     def test_api_docs_still_available(self, api_client: TestClient):

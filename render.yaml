@@ -1,6 +1,5 @@
 # Render Infrastructure as Code (IaC)
-# This file defines the free web service for the FastAPI RAG backend.
-# Deploy via: connect repo in Render dashboard (it will detect this file)
+# Deploy via: connect repo in Render dashboard (auto-detects this file)
 # or trigger via GitHub Actions deploy hook (see ci.yml).
 
 services:
@@ -13,10 +12,17 @@ services:
     envVars:
       - key: GROQ_MODEL
         value: llama-3.3-70b-versatile
-      # Add the following as a *secret* (not value) in the Render dashboard:
-      # - key: GROQ_API_KEY
-      #   sync: false   # or set via dashboard
-      #
-      # The app will use in-memory Qdrant by default (data is ephemeral on free tier).
-      # For a persistent demo you can later add QDRANT_URL + QDRANT_API_KEY
-      # from a free/limited Qdrant Cloud account.
+      - key: RERANKER_ENABLED
+        value: "false"
+      - key: CHUNK_SIZE
+        value: "256"
+      - key: PORT
+        value: "8000"
+      # Set GROQ_API_KEY as a secret in the Render dashboard (required for queries)
+      - key: GROQ_API_KEY
+        sync: false
+      # Optional: persistent vector storage via Qdrant Cloud
+      # - key: QDRANT_URL
+      #   sync: false
+      # - key: QDRANT_API_KEY
+      #   sync: false

@@ -3,298 +3,303 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>RAG Document Q&amp;A • Nice UI</title>
+  <title>RAG Document Q&amp;A</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&amp;family=Space+Grotesk:wght@500;600&amp;display=swap');
-    
     :root {
-      --primary: 234 179 8;
+      --surface: #09090b;
+      --surface-raised: #18181b;
+      --surface-muted: #27272a;
+      --border: #3f3f46;
+      --text: #fafafa;
+      --text-muted: #a1a1aa;
+      --accent: #10b981;
+      --accent-dim: #059669;
+      --danger: #f87171;
+      --radius-card: 14px;
+      --radius-control: 10px;
+      --radius-pill: 999px;
     }
-    
-    .tail-container {
-      font-family: 'Inter', system_ui, sans-serif;
+
+    * { box-sizing: border-box; }
+
+    body {
+      font-family: 'Sora', system-ui, sans-serif;
+      background: var(--surface);
+      color: var(--text);
+      min-height: 100dvh;
     }
-    
-    .heading-font {
-      font-family: 'Space Grotesk', 'Inter', system_ui, sans-serif;
+
+    .mono { font-family: 'IBM Plex Mono', ui-monospace, monospace; }
+
+    .grain::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      pointer-events: none;
+      opacity: 0.035;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    .panel {
+      background: var(--surface-raised);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-card);
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #042f2e;
+      border-radius: var(--radius-control);
       font-weight: 600;
+      transition: transform 0.15s ease, background 0.15s ease;
     }
+    .btn-primary:hover { background: #34d399; }
+    .btn-primary:active { transform: scale(0.98); }
 
-    .document-card {
-      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    .btn-ghost {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      border-radius: var(--radius-control);
+      transition: border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
     }
-    
-    .document-card:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.05), 0 4px 6px -4px rgb(0 0 0 / 0.05);
-    }
-
-    .source-card {
-      transition: all 0.2s ease;
-    }
+    .btn-ghost:hover { border-color: #52525b; color: var(--text); }
+    .btn-ghost:active { transform: scale(0.98); }
 
     .dropzone {
-      transition: all 0.2s ease;
+      border: 1px dashed #52525b;
+      border-radius: var(--radius-card);
+      background: #0c0c0e;
+      transition: border-color 0.2s ease, background 0.2s ease;
     }
-    
-    .dropzone.dragover {
-      background-color: #fefce8;
-      border-color: #eab308;
-    }
-
-    .chat-bubble {
-      max-width: 85%;
+    .dropzone:hover, .dropzone.dragover {
+      border-color: var(--accent);
+      background: #0f1f1a;
     }
 
-    .prose-custom {
-      font-size: 0.95rem;
-      line-height: 1.65;
+    .doc-row {
+      border: 1px solid #27272a;
+      border-radius: var(--radius-control);
+      transition: border-color 0.15s ease, transform 0.15s ease;
+    }
+    .doc-row:hover {
+      border-color: #3f3f46;
+      transform: translateY(-1px);
     }
 
-    .metric-badge {
-      font-size: 0.7rem;
-      padding: 1px 6px;
-      border-radius: 9999px;
+    .source-row {
+      border: 1px solid #27272a;
+      border-radius: var(--radius-control);
+      background: #0c0c0e;
     }
 
-    .section-header {
-      font-size: 0.875rem;
-      letter-spacing: -.025em;
-      font-weight: 600;
-      color: #334155;
+    .skeleton {
+      background: linear-gradient(90deg, #27272a 25%, #3f3f46 50%, #27272a 75%);
+      background-size: 200% 100%;
+      border-radius: 8px;
     }
-
-    .api-status {
-      font-size: 0.75rem;
-      padding: 2px 8px;
-      border-radius: 9999px;
+    @media (prefers-reduced-motion: no-preference) {
+      .skeleton { animation: shimmer 1.4s ease infinite; }
+      .fade-up {
+        animation: fadeUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+      }
+    }
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
     }
 
     .toast {
-      animation: slideUp 0.3s ease forwards;
+      animation: toastIn 0.3s ease forwards;
     }
-
-    @keyframes slideUp {
+    @keyframes toastIn {
       from { transform: translateY(100%); opacity: 0; }
       to { transform: translateY(0); opacity: 1; }
     }
 
-    .modern-shadow {
-      box-shadow: 0 10px 15px -3px rgb(15 23 42 / 0.08), 
-                  0 4px 6px -4px rgb(15 23 42 / 0.08);
+    input[type="range"] { accent-color: var(--accent); }
+
+    textarea, input[type="text"] {
+      background: #0c0c0e;
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: var(--radius-control);
     }
+    textarea:focus, input[type="text"]:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgb(16 185 129 / 0.15);
+    }
+
+    .status-live { background: var(--accent); box-shadow: 0 0 8px rgb(16 185 129 / 0.5); }
+    .status-down { background: var(--danger); }
   </style>
 </head>
-<body class="tail-container bg-slate-50">
-  <div class="max-w-7xl mx-auto">
-    <!-- Header -->
-    <header class="border-b border-slate-200 bg-white">
-      <div class="px-6 py-4 flex items-center justify-between">
-        <div class="flex items-center gap-x-3">
-          <div class="w-10 h-10 bg-yellow-500 rounded-2xl flex items-center justify-center shadow-inner">
-            <i class="fa-solid fa-file-lines text-white text-2xl"></i>
-          </div>
-          <div>
-            <h1 class="heading-font text-3xl font-semibold tracking-tighter text-slate-900">RAG Document Q&amp;A</h1>
-            <p class="text-[10px] text-slate-500 -mt-1 font-medium">Hybrid Retrieval • Groq + MiniLM</p>
-          </div>
+<body class="grain">
+  <div class="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 pb-12">
+    <!-- Nav -->
+    <header class="flex flex-wrap items-center justify-between gap-4 py-5 border-b border-zinc-800">
+      <div class="flex items-center gap-3 min-w-0">
+        <div class="w-9 h-9 rounded-[10px] bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center shrink-0">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M10 13h4"/><path d="M10 17h4"/></svg>
         </div>
-
-        <div class="flex items-center gap-x-2 text-sm">
-          <!-- API Base -->
-          <div class="hidden md:flex items-center bg-white border border-slate-200 rounded-2xl px-1.5 py-1 shadow-sm">
-            <div class="px-3 text-xs font-semibold text-slate-400">API</div>
-            <input id="api-base" type="text" value="https://rag-document-qa-22uh.onrender.com" 
-                   class="font-mono text-xs bg-transparent border-0 focus:ring-0 px-1.5 w-64 text-slate-700">
-            <button onclick="updateApiBase()" 
-                    class="text-xs font-medium px-3 py-1 rounded-xl bg-slate-900 text-white hover:bg-black transition-colors">
-              Set
-            </button>
-          </div>
-
-          <!-- Status -->
-          <div onclick="checkHealth()" class="flex items-center gap-x-2 cursor-pointer bg-white border border-slate-200 px-3 py-1.5 rounded-2xl text-xs shadow-sm">
-            <div id="status-dot" class="w-2.5 h-2.5 rounded-full bg-emerald-400"></div>
-            <div>
-              <span id="status-text" class="font-medium text-emerald-600">Connected</span>
-              <span id="status-version" class="font-mono text-[10px] text-slate-400 ml-1">v1.0.0</span>
-            </div>
-          </div>
-
-          <a href="/docs" target="_blank" 
-             class="hidden sm:flex items-center gap-x-1.5 text-xs font-semibold px-3 py-2 rounded-2xl border border-slate-200 hover:bg-white transition-colors text-slate-700">
-            <i class="fa-solid fa-book text-xs"></i>
-            <span>API Docs</span>
-          </a>
+        <div class="min-w-0">
+          <h1 class="text-lg font-semibold tracking-tight text-zinc-50 truncate">RAG Document Q&amp;A</h1>
+          <p class="text-[11px] text-zinc-500 mono">hybrid retrieval + groq llm</p>
         </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2 text-xs">
+        <div class="hidden lg:flex items-center gap-2 panel px-2 py-1.5">
+          <span class="text-zinc-500 mono pl-1">api</span>
+          <input id="api-base" type="text" class="mono text-xs bg-transparent border-0 focus:ring-0 w-52 text-zinc-300" value="">
+          <button onclick="updateApiBase()" class="btn-ghost px-3 py-1 text-xs">Set</button>
+        </div>
+        <button onclick="checkHealth()" class="btn-ghost flex items-center gap-2 px-3 py-2">
+          <span id="status-dot" class="w-2 h-2 rounded-full status-live"></span>
+          <span id="status-text" class="text-emerald-400 font-medium">Online</span>
+          <span id="status-version" class="mono text-[10px] text-zinc-500"></span>
+        </button>
+        <a href="/docs" target="_blank" class="btn-ghost px-3 py-2 hidden sm:inline-flex">API docs</a>
       </div>
     </header>
 
-    <!-- Hero / Instructions -->
-    <div class="px-6 pt-7 pb-4">
-      <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-y-3">
-        <div>
-          <h2 class="text-4xl font-semibold tracking-tighter text-slate-900">Upload. Ask. Understand.</h2>
-          <p class="mt-1 text-slate-600 max-w-md">A clean interface for your RAG backend. Upload documents and get accurate, sourced answers.</p>
+    <!-- Hero (compact, fits viewport discipline) -->
+    <section class="pt-8 pb-6 lg:pt-10">
+      <div class="grid lg:grid-cols-12 gap-8 items-end">
+        <div class="lg:col-span-7 fade-up">
+          <h2 class="text-3xl sm:text-4xl font-semibold tracking-tight text-zinc-50 leading-tight max-w-xl">
+            Upload documents. Ask grounded questions.
+          </h2>
+          <p class="mt-3 text-sm text-zinc-400 max-w-md leading-relaxed">
+            Dense + sparse retrieval with cited sources. Built for fast iteration on your own corpus.
+          </p>
         </div>
-        
-        <div class="flex items-center gap-x-2 text-xs">
-          <div class="bg-white border border-slate-200 rounded-3xl px-4 py-1.5 text-center shadow-sm">
-            <div class="font-semibold text-emerald-600">Free tier</div>
-            <div class="text-[10px] text-slate-400">Render + Groq</div>
+        <div class="lg:col-span-5 flex flex-wrap gap-2 lg:justify-end fade-up">
+          <div class="panel px-4 py-2 text-center">
+            <div class="text-xs font-semibold text-emerald-400">Qdrant + BM25</div>
+            <div class="text-[10px] text-zinc-500 mono mt-0.5">in-memory default</div>
           </div>
-          <button onclick="showQuickStart()" 
-                  class="text-xs font-semibold px-4 py-2 rounded-3xl bg-white border border-slate-200 hover:bg-slate-50 flex items-center gap-x-2">
-            <i class="fa-solid fa-lightbulb text-yellow-500"></i>
-            <span>Quick start</span>
-          </button>
+          <button onclick="showQuickStart()" class="btn-ghost px-4 py-2 text-xs font-medium">Quick start</button>
         </div>
       </div>
-    </div>
+    </section>
 
-    <!-- Main UI -->
-    <div class="px-6 pb-10">
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
-        <!-- DOCUMENTS PANEL -->
-        <div class="lg:col-span-5 bg-white border border-slate-200 shadow-sm rounded-3xl p-5 flex flex-col modern-shadow">
-          <div class="flex items-center justify-between mb-4">
-            <div>
-              <div class="section-header flex items-center gap-x-2">
-                <i class="fa-solid fa-folder text-yellow-500"></i> 
-                <span>DOCUMENTS</span>
+    <!-- Main grid: asymmetric split -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+      <!-- Documents -->
+      <section class="lg:col-span-4 panel p-5 flex flex-col min-h-[520px]">
+        <div class="flex items-start justify-between gap-3 mb-4">
+          <div>
+            <h3 class="text-sm font-semibold text-zinc-200">Documents</h3>
+            <p class="text-xs text-zinc-500 mt-0.5">PDF, DOCX, TXT, MD up to 20 MB</p>
+          </div>
+          <button onclick="clearAllDocuments()" class="text-xs text-red-400 hover:text-red-300 px-2 py-1 rounded-lg hover:bg-red-500/10">Clear all</button>
+        </div>
+
+        <div id="dropzone" class="dropzone p-6 text-center cursor-pointer mb-4" onclick="document.getElementById('file-input').click()">
+          <svg class="mx-auto mb-2 text-zinc-500" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p class="text-sm font-medium text-zinc-300">Drop a file here</p>
+          <p class="text-xs text-zinc-500 mt-1">or click to browse</p>
+          <input type="file" id="file-input" class="hidden" accept=".pdf,.docx,.txt,.md" onchange="handleFileSelect(event)">
+        </div>
+
+        <div id="documents-list" class="flex-1 overflow-auto space-y-2 pr-1" style="max-height: 360px;">
+          <div class="text-center py-8 text-xs text-zinc-500">
+            No documents yet. Upload one to begin.
+          </div>
+        </div>
+      </section>
+
+      <!-- Query -->
+      <section class="lg:col-span-8 panel p-5 flex flex-col min-h-[520px]">
+        <div class="mb-4">
+          <h3 class="text-sm font-semibold text-zinc-200">Ask a question</h3>
+          <p class="text-xs text-zinc-500 mt-0.5">Answers are generated only from uploaded content</p>
+        </div>
+
+        <div class="space-y-3">
+          <textarea id="question-input" rows="3" class="w-full p-4 text-sm placeholder:text-zinc-600 resize-none"
+                    placeholder="What are the main topics or findings in these documents?"></textarea>
+
+          <div class="flex flex-col sm:flex-row sm:items-end gap-3">
+            <div class="flex-1">
+              <label class="block text-[10px] font-medium text-zinc-500 mb-1.5 mono uppercase tracking-wide">Top results</label>
+              <div class="flex items-center gap-3">
+                <input type="range" id="topk-slider" min="1" max="10" step="1" value="5" class="w-full"
+                       oninput="document.getElementById('topk-value').textContent = this.value">
+                <span class="mono text-sm w-6 text-center text-emerald-400 font-medium" id="topk-value">5</span>
               </div>
-              <p class="text-xs text-slate-400">Manage what the model can see</p>
             </div>
-            <button onclick="clearAllDocuments()" 
-                    class="text-red-500 hover:text-red-600 text-xs flex items-center gap-x-1 px-2 py-1 rounded-xl hover:bg-red-50">
-              <i class="fa-solid fa-trash text-xs"></i>
-              <span class="hidden sm:inline text-[10px]">Clear all</span>
+            <button onclick="askQuestion()" class="btn-primary px-6 py-3 text-sm flex items-center justify-center gap-2 shrink-0">
+              Run query
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
             </button>
           </div>
+        </div>
 
-          <!-- Upload Zone -->
-          <div id="dropzone" 
-               class="dropzone border-2 border-dashed border-slate-300 hover:border-yellow-400 rounded-2xl p-5 text-center cursor-pointer bg-slate-50 mb-4"
-               onclick="document.getElementById('file-input').click()">
-            <div class="flex flex-col items-center justify-center py-1">
-              <i class="fa-solid fa-cloud-upload-alt text-3xl text-slate-400 mb-2"></i>
-              <p class="font-semibold text-sm">Drop PDF, DOCX, TXT or MD here</p>
-              <p class="text-xs text-slate-400 mt-0.5">or click to browse</p>
-              <input type="file" id="file-input" class="hidden" accept=".pdf,.docx,.txt,.md" onchange="handleFileSelect(event)">
+        <div id="results-container" class="mt-6 flex-1 hidden fade-up">
+          <div class="border-t border-zinc-800 pt-5">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-[10px] font-medium text-zinc-500 mono uppercase tracking-wide">Answer</span>
+              <span id="model-used" class="mono text-[10px] text-zinc-600"></span>
             </div>
-          </div>
+            <div id="answer-box" class="text-sm text-zinc-300 leading-relaxed bg-zinc-950/80 border border-zinc-800 rounded-[10px] p-4 min-h-[80px] whitespace-pre-wrap"></div>
 
-          <!-- Document List -->
-          <div class="flex-1 overflow-auto pr-1" style="max-height: 380px;">
-            <div id="documents-list" class="space-y-2 text-sm">
-              <!-- Populated by JS -->
-              <div class="text-center py-6 text-slate-400 text-xs">
-                No documents uploaded yet.<br>
-                <span class="font-medium">Upload something above to get started.</span>
-              </div>
+            <div class="mt-5">
+              <span class="text-[10px] font-medium text-zinc-500 mono uppercase tracking-wide">Sources</span>
+              <div id="sources-list" class="space-y-2 mt-2 max-h-[240px] overflow-auto pr-1"></div>
             </div>
           </div>
         </div>
 
-        <!-- QUERY PANEL -->
-        <div class="lg:col-span-7 bg-white border border-slate-200 shadow-sm rounded-3xl p-5 flex flex-col modern-shadow">
-          <div class="mb-4">
-            <div class="section-header flex items-center gap-x-2">
-              <i class="fa-solid fa-comments text-blue-500"></i> 
-              <span>ASK A QUESTION</span>
-            </div>
-            <p class="text-xs text-slate-400">Get grounded answers from your documents with sources</p>
-          </div>
-
-          <!-- Query Form -->
-          <div class="space-y-3">
-            <div>
-              <textarea id="question-input" rows="2" 
-                        class="w-full border border-slate-200 focus:border-blue-300 rounded-2xl p-4 text-sm placeholder:text-slate-400"
-                        placeholder="What are the key findings or main topics in the documents?"></textarea>
-            </div>
-
-            <div class="flex items-center gap-x-3">
-              <div class="flex-1">
-                <label class="block text-[10px] font-semibold text-slate-400 mb-1 ml-1">TOP RESULTS</label>
-                <div class="flex items-center gap-x-3">
-                  <input type="range" id="topk-slider" min="1" max="10" step="1" value="5"
-                         class="w-full accent-yellow-400" oninput="document.getElementById('topk-value').textContent = this.value">
-                  <div class="font-mono text-sm w-6 text-center font-semibold" id="topk-value">5</div>
-                </div>
-              </div>
-
-              <button onclick="askQuestion()" 
-                      class="flex-shrink-0 px-6 py-[13px] bg-slate-900 hover:bg-black transition-all text-white text-sm font-semibold rounded-2xl flex items-center gap-x-2">
-                <span>Ask</span>
-                <i class="fa-solid fa-arrow-right"></i>
-              </button>
-            </div>
-          </div>
-
-          <!-- Results -->
-          <div id="results-container" class="mt-5 flex-1 hidden">
-            <div class="border-t pt-5">
-              <!-- Answer -->
-              <div class="mb-4">
-                <div class="flex items-center justify-between text-xs mb-1.5 px-1">
-                  <span class="font-semibold text-slate-400">ANSWER</span>
-                  <span id="model-used" class="font-mono text-[10px] text-slate-400"></span>
-                </div>
-                <div id="answer-box" 
-                     class="prose-custom bg-slate-50 border border-slate-100 p-4 rounded-2xl text-sm text-slate-700 whitespace-pre-wrap min-h-[72px]">
-                </div>
-              </div>
-
-              <!-- Sources -->
-              <div>
-                <div class="flex items-center justify-between mb-2 px-1">
-                  <span class="font-semibold text-xs text-slate-400">SOURCES <span class="text-[10px]">(most relevant first)</span></span>
-                </div>
-                <div id="sources-list" class="space-y-2 max-h-[220px] overflow-auto pr-1">
-                  <!-- JS populated source cards -->
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Empty state for results -->
-          <div id="results-empty" class="flex-1 flex items-center justify-center text-center text-xs text-slate-400 border-t pt-5 mt-5">
-            Your answer and cited sources will appear here after you ask a question.
-          </div>
+        <div id="results-empty" class="flex-1 flex items-center justify-center text-center text-xs text-zinc-600 border-t border-zinc-800 mt-6 pt-8">
+          Your answer and cited chunks will show up here after you run a query.
         </div>
-      </div>
+      </section>
     </div>
 
-    <!-- Footer tips -->
-    <div class="px-6 pb-8 text-xs text-slate-400 flex items-center gap-4">
-      <div class="flex-1 h-px bg-slate-200"></div>
-      <div>Tip: Upload a few documents first. Then ask specific questions for the best results.</div>
-      <div class="flex-1 h-px bg-slate-200"></div>
+    <p class="text-center text-[11px] text-zinc-600 mt-8 mono">requires GROQ_API_KEY on the server for live answers</p>
+  </div>
+
+  <div id="toast-container" class="fixed bottom-4 right-4 z-50 space-y-2 max-w-sm"></div>
+
+  <!-- Quick start modal -->
+  <div id="quickstart-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70" onclick="if(event.target===this)hideQuickStart()">
+    <div class="panel max-w-lg w-full p-6 fade-up" onclick="event.stopPropagation()">
+      <div class="flex justify-between items-start mb-4">
+        <h3 class="text-base font-semibold text-zinc-100">Quick start</h3>
+        <button onclick="hideQuickStart()" class="text-zinc-500 hover:text-zinc-300 text-xl leading-none">&times;</button>
+      </div>
+      <ol class="text-sm text-zinc-400 space-y-3 list-decimal list-inside leading-relaxed">
+        <li>Upload a PDF, DOCX, TXT, or Markdown file in the left panel.</li>
+        <li>Wait for ingestion to finish (first run downloads the embedding model).</li>
+        <li>Type a specific question and click <strong class="text-zinc-200">Run query</strong>.</li>
+        <li>Review the answer and source chunks with relevance scores.</li>
+      </ol>
+      <p class="mt-4 text-xs text-zinc-500 mono">Set GROQ_API_KEY in .env on the API server.</p>
+      <button onclick="hideQuickStart()" class="btn-primary w-full mt-5 py-2.5 text-sm">Got it</button>
     </div>
   </div>
 
-  <!-- Toast container -->
-  <div id="toast-container" class="fixed bottom-4 right-4 z-50 space-y-2"></div>
-
   <script>
-    // Tailwind script config
-    function initTailwind() {
-      tailwind.config = {
-        theme: {
-          extend: {
-            fontFamily: {
-              'heading': ['Space Grotesk', 'Inter', 'system-ui', 'sans-serif']
-            }
-          }
-        }
-      };
+    function defaultApiBase() {
+      if (window.location.origin && window.location.origin !== 'null') {
+        return window.location.origin;
+      }
+      return 'http://127.0.0.1:8000';
     }
 
-    let API_BASE = "https://rag-document-qa-22uh.onrender.com";
+    let API_BASE = defaultApiBase();
     let currentDocs = [];
 
     function setApiBase(url) {
@@ -309,7 +314,7 @@
         setApiBase(val);
         checkHealth();
         loadDocuments();
-        showToast("API base updated", "success");
+        showToast('API base updated', 'success');
       }
     }
 
@@ -317,214 +322,160 @@
       const saved = localStorage.getItem('rag_api_base');
       if (saved) {
         API_BASE = saved;
-        document.getElementById('api-base').value = API_BASE;
-      } else {
-        document.getElementById('api-base').value = API_BASE;
       }
+      document.getElementById('api-base').value = API_BASE;
     }
 
-    // Toast
-    function showToast(message, type = "success") {
+    function showQuickStart() {
+      document.getElementById('quickstart-modal').classList.remove('hidden');
+    }
+    function hideQuickStart() {
+      document.getElementById('quickstart-modal').classList.add('hidden');
+    }
+
+    function showToast(message, type = 'success') {
       const container = document.getElementById('toast-container');
       const id = 'toast-' + Date.now();
-      
-      const colors = {
-        success: 'bg-emerald-600 text-white',
+      const styles = {
+        success: 'bg-emerald-600 text-emerald-950',
         error: 'bg-red-600 text-white',
-        info: 'bg-slate-700 text-white'
+        info: 'bg-zinc-700 text-zinc-100'
       };
-      
       const el = document.createElement('div');
       el.id = id;
-      el.className = `toast px-4 py-3 rounded-2xl shadow-xl flex items-center gap-x-3 text-sm ${colors[type] || colors.info}`;
-      el.innerHTML = `
-        <div class="flex-1">${message}</div>
-        <button onclick="document.getElementById('${id}').remove()" class="opacity-75 hover:opacity-100">
-          <i class="fa-solid fa-times"></i>
-        </button>
-      `;
+      el.className = `toast px-4 py-3 rounded-[10px] shadow-2xl flex items-center gap-3 text-sm ${styles[type] || styles.info}`;
+      el.innerHTML = `<div class="flex-1">${message}</div><button onclick="document.getElementById('${id}').remove()" class="opacity-70 hover:opacity-100">&times;</button>`;
       container.appendChild(el);
-      
-      setTimeout(() => {
-        if (el.parentNode) el.parentNode.removeChild(el);
-      }, 3800);
+      setTimeout(() => { if (el.parentNode) el.parentNode.removeChild(el); }, 3800);
     }
 
-    // Health
     async function checkHealth() {
       const dot = document.getElementById('status-dot');
       const text = document.getElementById('status-text');
       const ver = document.getElementById('status-version');
-      
       try {
         const res = await fetch(`${API_BASE}/health`);
         if (!res.ok) throw new Error();
-        
         const data = await res.json();
-        
-        dot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400';
-        text.textContent = 'Connected';
-        text.className = 'font-medium text-emerald-600';
+        dot.className = 'w-2 h-2 rounded-full status-live';
+        text.textContent = 'Online';
+        text.className = 'text-emerald-400 font-medium';
         ver.textContent = `v${data.version || '1.0.0'}`;
-        
         return data;
       } catch (e) {
-        dot.className = 'w-2.5 h-2.5 rounded-full bg-red-400';
-        text.textContent = 'Disconnected';
-        text.className = 'font-medium text-red-600';
+        dot.className = 'w-2 h-2 rounded-full status-down';
+        text.textContent = 'Offline';
+        text.className = 'text-red-400 font-medium';
         ver.textContent = '';
         return null;
       }
     }
 
-    // Documents
+    function renderSkeletonList() {
+      return [1, 2, 3].map(() =>
+        `<div class="doc-row p-3"><div class="skeleton h-4 w-3/4 mb-2"></div><div class="skeleton h-3 w-1/3"></div></div>`
+      ).join('');
+    }
+
     async function loadDocuments() {
       const listEl = document.getElementById('documents-list');
-      listEl.innerHTML = `<div class="px-3 py-6 text-center text-xs text-slate-400">Loading documents...</div>`;
-      
+      listEl.innerHTML = renderSkeletonList();
       try {
         const res = await fetch(`${API_BASE}/documents/`);
         if (!res.ok) throw new Error(await res.text());
-        
         currentDocs = await res.json();
-        
         if (!currentDocs.length) {
-          listEl.innerHTML = `
-            <div class="px-4 py-7 text-center">
-              <i class="fa-regular fa-folder-open text-3xl text-slate-200 mb-3"></i>
-              <p class="text-xs text-slate-400">No documents yet.<br>Upload one above.</p>
-            </div>`;
+          listEl.innerHTML = `<div class="text-center py-8 text-xs text-zinc-500">No documents yet. Upload one to begin.</div>`;
           return;
         }
-        
         listEl.innerHTML = '';
-        
         currentDocs.forEach(doc => {
           const card = document.createElement('div');
-          card.className = `document-card bg-white border border-slate-100 rounded-2xl px-3.5 py-[9px] flex items-center gap-x-3 text-sm group`;
-          
+          card.className = 'doc-row px-3 py-2.5 flex items-center gap-3 text-sm group';
           card.innerHTML = `
             <div class="flex-1 min-w-0">
-              <div class="font-semibold text-slate-800 truncate">${doc.filename}</div>
-              <div class="flex items-center text-[10px] text-slate-400 mt-px">
+              <div class="font-medium text-zinc-200 truncate">${doc.filename}</div>
+              <div class="flex items-center text-[10px] text-zinc-500 mt-0.5 mono">
                 <span>${doc.chunk_count} chunks</span>
-                <span class="mx-1.5 text-slate-300">•</span>
-                <span class="font-mono">${doc.doc_id.substring(0, 8)}</span>
+                <span class="mx-1.5 text-zinc-700">|</span>
+                <span>${doc.doc_id.substring(0, 8)}</span>
               </div>
             </div>
-            
-            <button onclick="event.stopImmediatePropagation(); deleteDocument('${doc.doc_id}', this)" 
-                    class="opacity-40 hover:opacity-100 text-red-500 hover:text-red-600 p-1.5 -mr-1 rounded-xl transition-colors">
-              <i class="fa-solid fa-trash text-sm"></i>
-            </button>
-          `;
-          
+            <button onclick="event.stopImmediatePropagation(); deleteDocument('${doc.doc_id}', this)"
+                    class="opacity-50 hover:opacity-100 text-red-400 p-1.5 rounded-lg hover:bg-red-500/10 transition-opacity">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            </button>`;
           listEl.appendChild(card);
         });
       } catch (err) {
-        listEl.innerHTML = `<div class="text-xs text-red-500 px-3 py-4">Failed to load documents. Is the API reachable?</div>`;
+        listEl.innerHTML = `<div class="text-xs text-red-400 px-2 py-4">Could not reach the API. Check the base URL.</div>`;
       }
     }
 
     async function deleteDocument(docId, btnEl) {
       if (!confirm('Delete this document?')) return;
-      
-      const originalText = btnEl.innerHTML;
-      btnEl.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i>`;
       btnEl.disabled = true;
-      
+      btnEl.innerHTML = `<span class="skeleton inline-block w-4 h-4"></span>`;
       try {
         const res = await fetch(`${API_BASE}/documents/${docId}`, { method: 'DELETE' });
         if (!res.ok && res.status !== 204) throw new Error();
-        
         showToast('Document removed', 'success');
         await loadDocuments();
       } catch (e) {
         showToast('Failed to delete document', 'error');
-        btnEl.innerHTML = originalText;
         btnEl.disabled = false;
+        btnEl.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`;
       }
     }
 
     async function clearAllDocuments() {
       if (!currentDocs.length) return;
       if (!confirm(`Delete all ${currentDocs.length} documents?`)) return;
-      
       for (const doc of [...currentDocs]) {
-        try {
-          await fetch(`${API_BASE}/documents/${doc.doc_id}`, { method: 'DELETE' });
-        } catch {}
+        try { await fetch(`${API_BASE}/documents/${doc.doc_id}`, { method: 'DELETE' }); } catch {}
       }
       showToast('All documents cleared');
       await loadDocuments();
     }
 
-    // Upload
     function setupDropzone() {
       const drop = document.getElementById('dropzone');
-      const input = document.getElementById('file-input');
-      
-      drop.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        drop.classList.add('dragover');
-      });
-      
+      drop.addEventListener('dragover', (e) => { e.preventDefault(); drop.classList.add('dragover'); });
       drop.addEventListener('dragleave', () => drop.classList.remove('dragover'));
-      
       drop.addEventListener('drop', (e) => {
         e.preventDefault();
         drop.classList.remove('dragover');
-        if (e.dataTransfer.files.length) {
-          handleFile(e.dataTransfer.files[0]);
-        }
+        if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
       });
-      
-      // Also allow clicking the whole zone (already wired to input)
     }
 
     function handleFileSelect(e) {
       if (e.target.files.length) {
         handleFile(e.target.files[0]);
-        e.target.value = ''; // reset
+        e.target.value = '';
       }
     }
 
     async function handleFile(file) {
       const allowed = ['.pdf', '.docx', '.txt', '.md'];
       const ext = '.' + file.name.split('.').pop().toLowerCase();
-      
       if (!allowed.includes(ext)) {
         showToast('Only PDF, DOCX, TXT and MD files are supported.', 'error');
         return;
       }
-      
       const drop = document.getElementById('dropzone');
       const originalHTML = drop.innerHTML;
-      
-      drop.innerHTML = `
-        <div class="flex items-center justify-center py-3">
-          <i class="fa-solid fa-spinner fa-spin mr-3 text-yellow-500"></i> 
-          <span class="font-medium text-sm">Uploading &amp; ingesting...</span>
-        </div>`;
-      
+      drop.innerHTML = `<div class="py-4 space-y-2"><div class="skeleton h-4 w-40 mx-auto"></div><div class="skeleton h-3 w-28 mx-auto"></div></div>`;
       try {
         const form = new FormData();
         form.append('file', file);
-        
-        const res = await fetch(`${API_BASE}/documents/upload`, {
-          method: 'POST',
-          body: form
-        });
-        
+        const res = await fetch(`${API_BASE}/documents/upload`, { method: 'POST', body: form });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
           throw new Error(err.detail || 'Upload failed');
         }
-        
         const result = await res.json();
-        
         showToast(`Ingested ${result.filename} (${result.chunks_created} chunks)`, 'success');
-        
         await loadDocuments();
       } catch (err) {
         showToast(err.message || 'Upload failed', 'error');
@@ -533,137 +484,80 @@
       }
     }
 
-    // Query
     async function askQuestion() {
       const input = document.getElementById('question-input');
       const topk = parseInt(document.getElementById('topk-slider').value);
       const question = input.value.trim();
-      
       if (!question) {
         showToast('Please enter a question', 'error');
         return;
       }
-      
       const resultsContainer = document.getElementById('results-container');
       const empty = document.getElementById('results-empty');
-      
       resultsContainer.classList.remove('hidden');
       empty.classList.add('hidden');
-      
       const answerBox = document.getElementById('answer-box');
       const sourcesList = document.getElementById('sources-list');
       const modelEl = document.getElementById('model-used');
-      
-      answerBox.innerHTML = `<span class="flex items-center gap-2 text-xs"><i class="fa-solid fa-spinner fa-spin"></i> Thinking...</span>`;
+      answerBox.innerHTML = `<div class="space-y-2"><div class="skeleton h-4 w-full"></div><div class="skeleton h-4 w-5/6"></div><div class="skeleton h-4 w-2/3"></div></div>`;
       sourcesList.innerHTML = '';
       modelEl.textContent = '';
-      
       try {
         const res = await fetch(`${API_BASE}/query/`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ question, top_k: topk })
         });
-        
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
           throw new Error(errData.detail || `Error ${res.status}`);
         }
-        
         const data = await res.json();
-        
-        // Answer
-        answerBox.innerHTML = data.answer || 'No answer generated.';
-        
-        // Model
-        if (data.model) {
-          modelEl.textContent = data.model;
-        }
-        
-        // Sources
+        answerBox.textContent = data.answer || 'No answer generated.';
+        if (data.model) modelEl.textContent = data.model;
         if (data.sources && data.sources.length) {
-          sourcesList.innerHTML = data.sources.map((src, i) => `
-            <div class="source-card border border-slate-100 bg-white rounded-2xl p-3 text-xs">
-              <div class="flex items-center justify-between mb-1.5">
-                <div class="font-semibold truncate pr-2">${src.filename || 'Unknown'}</div>
-                <div class="flex-shrink-0 flex items-center gap-x-1.5">
-                  <span class="metric-badge bg-slate-100 text-slate-600 font-medium">chunk ${src.chunk_index}</span>
-                  <span class="metric-badge bg-yellow-100 text-yellow-700 font-semibold">${(src.score || 0).toFixed(2)}</span>
+          sourcesList.innerHTML = data.sources.map(src => `
+            <div class="source-row p-3 text-xs">
+              <div class="flex items-center justify-between mb-1.5 gap-2">
+                <div class="font-medium text-zinc-300 truncate">${src.filename || 'Unknown'}</div>
+                <div class="flex shrink-0 gap-1.5 mono text-[10px]">
+                  <span class="px-1.5 py-0.5 rounded-full bg-zinc-800 text-zinc-400">chunk ${src.chunk_index}</span>
+                  <span class="px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400">${(src.score || 0).toFixed(2)}</span>
                 </div>
               </div>
-              <div class="text-slate-600 leading-snug line-clamp-4">${src.text}</div>
-              <div class="mt-2 text-[10px] text-right text-slate-400 font-mono">${src.doc_id ? src.doc_id.substring(0,10) : ''}</div>
-            </div>
-          `).join('');
+              <div class="text-zinc-500 leading-snug line-clamp-4">${src.text}</div>
+            </div>`).join('');
         } else {
-          sourcesList.innerHTML = `<div class="text-xs px-1 py-2 text-slate-400">No sources returned.</div>`;
+          sourcesList.innerHTML = `<div class="text-xs text-zinc-600 py-2">No sources returned.</div>`;
         }
-        
-        // Clear input after success
         input.value = '';
-        
       } catch (err) {
-        answerBox.innerHTML = `<span class="text-red-500">Error: ${err.message}</span>`;
+        answerBox.innerHTML = `<span class="text-red-400">Error: ${err.message}</span>`;
         showToast(err.message, 'error');
       }
     }
 
-    // Utility: setup drag drop + other listeners
     function setupListeners() {
       setupDropzone();
-      
-      // Keyboard support for question
-      const qInput = document.getElementById('question-input');
-      qInput.addEventListener('keydown', function(e) {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          askQuestion();
-        }
+      document.getElementById('question-input').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); askQuestion(); }
       });
-      
-      // Slider live value already wired in HTML oninput
       document.getElementById('topk-slider').addEventListener('input', function() {
         document.getElementById('topk-value').textContent = this.value;
+      });
+      document.getElementById('api-base').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') updateApiBase();
       });
     }
 
     async function init() {
-      initTailwind();
       loadSavedApiBase();
       setupListeners();
-      
-      // Initial data load
       await checkHealth();
       await loadDocuments();
-      
-      // Optional: warm the connection
-      setTimeout(() => {
-        const dot = document.getElementById('status-dot');
-        if (dot && dot.classList.contains('bg-emerald-400')) {
-          // already connected
-        }
-      }, 1200);
-      
-      // Allow pressing Enter in api base input
-      document.getElementById('api-base').addEventListener('keydown', function(e) {
-        if (e.key === 'Enter') updateApiBase();
-      });
-      
-      // Welcome toast on first load (demo only)
-      setTimeout(() => {
-        const list = document.getElementById('documents-list');
-        if (list && list.innerText.includes('No documents')) {
-          // no need for toast on every refresh
-        }
-      }, 2500);
-      
-      console.log('%c[Nice UI] RAG frontend ready. API base:', 'color:#64748b', API_BASE);
     }
 
-    // Boot
     window.onload = init;
-    
-    // Expose a few helpers for console debugging
     window.RAG_UI = { checkHealth, loadDocuments, setApiBase };
   </script>
 </body>
