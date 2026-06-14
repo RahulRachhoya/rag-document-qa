@@ -21,7 +21,16 @@ class CrossEncoderReranker:
             from sentence_transformers import CrossEncoder
 
             logger.info("Loading cross-encoder: %s", self.model_name)
-            self._model = CrossEncoder(self.model_name)
+            self._model = CrossEncoder(self.model_name, device="cpu")
+            try:
+                import os
+
+                import psutil
+
+                rss_mb = psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024)
+                logger.info("Memory after reranker load: %.1f MB (RSS)", rss_mb)
+            except Exception:
+                pass
         return self._model
 
     def rerank(self, query: str, chunks: list[dict], top_k: int = 5) -> list[dict]:
