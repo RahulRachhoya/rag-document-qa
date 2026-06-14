@@ -8,6 +8,8 @@ on:
 
 jobs:
   test:
+    # Dependabot PRs use dependabot-ci.yml for a fuller verification suite.
+    if: github.event_name == 'push' || github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -30,6 +32,10 @@ jobs:
 
       - name: Run unit tests
         run: pytest tests/unit -v --tb=short
+
+      - name: Run integration tests
+        if: github.event_name == 'pull_request'
+        run: pytest tests/integration -v --tb=short
 
   deploy-hf:
     needs: test
