@@ -12,6 +12,7 @@ dependencies = [
     "pydantic-settings",
     "groq",
     "sentence-transformers",
+    "fastembed",
     "qdrant-client",
     "rank-bm25",
     "pypdf",

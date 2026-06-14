@@ -19,6 +19,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from rag_qa.api.routes import documents as documents_route
 from rag_qa.config import Settings
 from rag_qa.api.main import app
 
@@ -72,9 +73,7 @@ def api_client():
     """
     with (
         patch("rag_qa.pipeline.GroqLLM") as MockLLM,
-        patch("rag_qa.pipeline.Embedder") as MockEmbedder,
-        patch("rag_qa.api.main.GroqLLM", MockLLM),  # also patch where main imports
-        patch("rag_qa.api.main.Embedder", MockEmbedder),
+        patch("rag_qa.pipeline.create_embedder") as MockCreateEmbedder,
     ):
         mock_llm = MagicMock()
         mock_llm.generate.return_value = "This is a mocked grounded answer based on the provided context."
@@ -83,15 +82,18 @@ def api_client():
         mock_emb = MagicMock()
         mock_emb.embed.side_effect = lambda texts: [[0.1] * 384 for _ in texts]
         mock_emb.embed_one.return_value = [0.1] * 384
-        MockEmbedder.return_value = mock_emb
+        mock_emb.dimension = 384
+        MockCreateEmbedder.return_value = mock_emb
 
         # Force re-creation of the global pipeline in main.py for this test client
-        # (the module-level pipeline is created at import time)
+        # (the module-level pipeline is created at import time, before mocks apply)
         import rag_qa.api.main as main_module
-        main_module.pipeline = main_module.RAGPipeline(main_module.settings)
 
-        client = TestClient(app)
-        yield client
+        main_module.pipeline = main_module.RAGPipeline(main_module.settings)
+        documents_route.set_pipeline(main_module.pipeline)
+
+        with TestClient(app) as client:
+            yield client
 
 
 @pytest.fixture()

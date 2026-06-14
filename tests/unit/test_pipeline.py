@@ -38,7 +38,7 @@ def pipeline_with_mock_llm():
     settings = make_test_settings()
     with (
         patch("rag_qa.pipeline.GroqLLM") as MockLLM,
-        patch("rag_qa.pipeline.Embedder") as MockEmbedder,
+        patch("rag_qa.pipeline.create_embedder") as MockEmbedder,
     ):
         mock_llm_instance = MagicMock()
         mock_llm_instance.generate.return_value = "Mocked answer from the document."

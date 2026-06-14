@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import os
+from typing import Self
+
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -41,6 +45,21 @@ class Settings(BaseSettings):
     # API
     upload_dir: str = "uploads"
     max_file_size_mb: int = 20
+
+    @model_validator(mode="after")
+    def _apply_platform_defaults(self) -> Self:
+        """Auto-enable low-memory mode on Render when LOW_MEMORY is not explicitly set."""
+        if os.environ.get("LOW_MEMORY") is None and os.environ.get("RENDER", "").lower() == "true":
+            object.__setattr__(self, "low_memory", True)
+
+        if self.low_memory:
+            if self.chunk_size > 256:
+                object.__setattr__(self, "chunk_size", 256)
+            object.__setattr__(self, "reranker_enabled", False)
+            if self.embed_model in ("all-MiniLM-L6-v2", "sentence-transformers/all-MiniLM-L6-v2"):
+                object.__setattr__(self, "embed_model", "BAAI/bge-small-en-v1.5")
+
+        return self
 
 
 settings = Settings()

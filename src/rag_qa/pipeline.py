@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 
 from rag_qa.config import Settings
 from rag_qa.services.chunker import RecursiveChunker
-from rag_qa.services.embedder import Embedder
+from rag_qa.services.embedder import Embedder, create_embedder
 from rag_qa.services.llm import GroqLLM
 from rag_qa.services.loader import DocumentLoader
 from rag_qa.services.reranker import CrossEncoderReranker, NoOpReranker
@@ -37,7 +37,7 @@ class RAGPipeline:
             chunk_size=self._settings.chunk_size,
             chunk_overlap=self._settings.chunk_overlap,
         )
-        self._embedder = Embedder(self._settings.embed_model)
+        self._embedder: Embedder = create_embedder(self._settings)
         self._vector_store = VectorStore(
             collection_name=self._settings.qdrant_collection,
             qdrant_url=self._settings.qdrant_url,
@@ -82,6 +82,13 @@ class RAGPipeline:
         """
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self._query_sync, question, top_k)
+
+    def warmup(self) -> None:
+        """Pre-load the embedder at startup (avoids cold-start OOM/timeouts on first upload)."""
+        backend = "FastEmbed" if self._settings.low_memory else "SentenceTransformer"
+        logger.info("Warming up embedder (%s, model=%s)", backend, self._settings.embed_model)
+        self._embedder.embed_one("warmup")
+        logger.info("Embedder warmup complete (dim=%d)", self._embedder.dimension)
 
     def list_documents(self) -> list[dict]:
         """Return metadata for all ingested documents."""

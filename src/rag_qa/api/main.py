@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from pathlib import Path
@@ -48,9 +49,26 @@ async def startup_event() -> None:
     if psutil:
         try:
             rss_mb = psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024)
-            logger.info("Startup memory: %.1f MB (RSS) | reranker_enabled=%s | low_memory=%s", rss_mb, settings.reranker_enabled, getattr(settings, "low_memory", False))
+            logger.info(
+                "Startup memory: %.1f MB (RSS) | reranker_enabled=%s | low_memory=%s | embed=%s",
+                rss_mb,
+                settings.reranker_enabled,
+                settings.low_memory,
+                settings.embed_model,
+            )
         except Exception:
             pass
+
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, pipeline.warmup)
+
+    if psutil:
+        try:
+            rss_mb = psutil.Process(os.getpid()).memory_info().rss / (1024 * 1024)
+            logger.info("Post-warmup memory: %.1f MB (RSS)", rss_mb)
+        except Exception:
+            pass
+
     logger.info("RAG pipeline ready (model=%s)", settings.groq_model)
 
 

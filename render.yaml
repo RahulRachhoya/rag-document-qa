@@ -16,6 +16,8 @@ services:
         value: "false"
       - key: LOW_MEMORY
         value: "true"
+      - key: EMBED_MODEL
+        value: BAAI/bge-small-en-v1.5
       - key: CHUNK_SIZE
         value: "256"
       - key: PORT
