@@ -1,0 +1,60 @@
+# Dependabot version updates — https://docs.github.com/en/code-security/dependabot
+version: 2
+
+updates:
+  # Main application dependencies (pyproject.toml)
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - python
+    commit-message:
+      prefix: deps
+      include: scope
+
+  # Hugging Face Gradio demo dependencies
+  - package-ecosystem: pip
+    directory: /hf_demo
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - python
+      - hf-demo
+    commit-message:
+      prefix: deps
+      include: scope
+
+  # GitHub Actions workflow pins
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - github-actions
+    commit-message:
+      prefix: ci
+      include: scope
+
+  # Docker base image (python:3.11-slim)
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - docker
+    commit-message:
+      prefix: docker
+      include: scope
