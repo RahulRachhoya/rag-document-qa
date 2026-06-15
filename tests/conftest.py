@@ -19,9 +19,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from rag_qa.api.main import app
 from rag_qa.api.routes import documents as documents_route
 from rag_qa.config import Settings
-from rag_qa.api.main import app
 
 
 @pytest.fixture()
