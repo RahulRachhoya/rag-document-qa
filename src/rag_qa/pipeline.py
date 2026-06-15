@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 import uuid
 from datetime import UTC, datetime
 
@@ -74,19 +75,23 @@ class RAGPipeline:
         return await loop.run_in_executor(None, self._ingest_sync, file_path, filename)
 
     async def query(
-        self, question: str, top_k: int = 5, doc_ids: list[str] | None = None
+        self, question: str, top_k: int = 5, doc_ids: list[str] | None = None, explain: bool = False
     ) -> dict:
         """
         Retrieve relevant chunks and generate a grounded answer.
 
         When *doc_ids* is provided, retrieval is restricted to those documents.
+        When *explain* is True, the result carries a ``trace`` dict describing each
+        retrieval stage (dense, bm25, fused, reranked) for visualization.
 
         Returns::
 
             {"answer": str, "sources": list[dict], "scores": list[float], "question": str}
         """
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, self._query_sync, question, top_k, doc_ids)
+        return await loop.run_in_executor(
+            None, self._query_sync, question, top_k, doc_ids, explain
+        )
 
     def warmup(self) -> None:
         """Pre-load models at startup (avoids cold-start OOM/timeouts on first request).
@@ -212,7 +217,11 @@ class RAGPipeline:
         }
 
     def _query_sync(
-        self, question: str, top_k: int = 5, doc_ids: list[str] | None = None
+        self,
+        question: str,
+        top_k: int = 5,
+        doc_ids: list[str] | None = None,
+        explain: bool = False,
     ) -> dict:
         logger.info("Query: %.80s", question)
         if getattr(self._settings, "low_memory", False) or not self._settings.reranker_enabled:
@@ -220,23 +229,46 @@ class RAGPipeline:
         else:
             top_n = self._settings.retrieval_top_n_rerank
 
+        timings: dict[str, float] = {}
+        # Only allocate a trace sink when explaining; the hot path stays untouched.
+        retrieval_trace: dict[str, list[dict]] | None = {} if explain else None
+
         # 1. Hybrid retrieval
+        t0 = time.perf_counter()
         candidates = self._retriever.search(
-            question, top_k=top_n, top_n=top_n, doc_ids=doc_ids
+            question, top_k=top_n, top_n=top_n, doc_ids=doc_ids, trace=retrieval_trace
         )
+        if explain:
+            retrieve_ms = (time.perf_counter() - t0) * 1000.0
+            # Prefer the retriever's per-lane sub-timings (dense/bm25/fuse); fall
+            # back to a single coarse "retrieve" bucket if they weren't reported.
+            sub = (retrieval_trace or {}).get("timings") if retrieval_trace else None
+            if isinstance(sub, dict):
+                timings.update({k: float(v) for k, v in sub.items()})
+            else:
+                timings["retrieve"] = retrieve_ms
         if not candidates:
             return {
                 "answer": "No documents have been ingested yet. Please upload a document first.",
                 "sources": [],
                 "scores": [],
                 "question": question,
+                "trace": self._build_trace(question, retrieval_trace, [], [], timings)
+                if explain
+                else None,
             }
 
         # 2. Rerank
+        t0 = time.perf_counter()
         reranked = self._reranker.rerank(question, candidates, top_k=top_k)
+        if explain:
+            timings["rerank"] = (time.perf_counter() - t0) * 1000.0
 
         # 3. Generate answer
+        t0 = time.perf_counter()
         answer = self._llm.generate(question, reranked)
+        if explain:
+            timings["generate"] = (time.perf_counter() - t0) * 1000.0
 
         sources = [
             {
@@ -256,4 +288,90 @@ class RAGPipeline:
             "scores": scores,
             "question": question,
             "model": self._settings.groq_model,
+            "trace": self._build_trace(question, retrieval_trace, candidates, reranked, timings)
+            if explain
+            else None,
+        }
+
+    # ------------------------------------------------------------------
+    # Trace assembly (explain mode only)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _preview(text: str, limit: int = 160) -> str:
+        text = (text or "").strip().replace("\n", " ")
+        return text[:limit] + ("\u2026" if len(text) > limit else "")
+
+    def _build_trace(
+        self,
+        question: str,
+        retrieval_trace: dict[str, list[dict]] | None,
+        fused: list[dict],
+        reranked: list[dict],
+        timings: dict[str, float],
+    ) -> dict:
+        """Assemble the per-stage retrieval trace from captured intermediate data.
+
+        Pure data shaping over lists the pipeline already produced — nothing is
+        recomputed, so this is cheap and only runs when explain=True.
+        """
+        rt = retrieval_trace or {}
+
+        def _candidate(item: dict, rank: int, score_key: str) -> dict:
+            return {
+                "doc_id": item.get("doc_id", ""),
+                "chunk_index": item.get("chunk_index", 0),
+                "filename": item.get("filename", "unknown"),
+                "rank": rank,
+                "score": float(item.get(score_key, 0.0)),
+                "text_preview": self._preview(item.get("text", "")),
+            }
+
+        dense = [
+            _candidate(it, i, "_score") for i, it in enumerate(rt.get("dense", []), start=1)
+        ]
+        bm25 = [
+            _candidate(it, i, "_score") for i, it in enumerate(rt.get("bm25", []), start=1)
+        ]
+
+        fused_trace = [
+            {
+                "doc_id": it.get("doc_id", ""),
+                "chunk_index": it.get("chunk_index", 0),
+                "filename": it.get("filename", "unknown"),
+                "dense_rank": it.get("_dense_rank"),
+                "bm25_rank": it.get("_bm25_rank"),
+                "rrf_score": float(it.get("_rrf_score", 0.0)),
+                "rank": i,
+                "text_preview": self._preview(it.get("text", "")),
+            }
+            for i, it in enumerate(fused, start=1)
+        ]
+
+        # Position of each fused chunk so we can show how far rerank moved it.
+        def _key(it: dict) -> str:
+            return f"{it.get('doc_id', '')}::{it.get('chunk_index', 0)}"
+
+        fused_pos = {_key(it): i for i, it in enumerate(fused, start=1)}
+        reranked_trace = [
+            {
+                "doc_id": it.get("doc_id", ""),
+                "chunk_index": it.get("chunk_index", 0),
+                "filename": it.get("filename", "unknown"),
+                "rerank_score": float(it.get("_rerank_score", it.get("_rrf_score", 0.0))),
+                "rank": i,
+                "previous_rank": fused_pos.get(_key(it)),
+                "text_preview": self._preview(it.get("text", "")),
+            }
+            for i, it in enumerate(reranked, start=1)
+        ]
+
+        return {
+            "question": question,
+            "dense": dense,
+            "bm25": bm25,
+            "fused": fused_trace,
+            "reranked": reranked_trace,
+            "reranker_enabled": not isinstance(self._reranker, NoOpReranker),
+            "timings_ms": {k: round(v, 2) for k, v in timings.items()},
         }

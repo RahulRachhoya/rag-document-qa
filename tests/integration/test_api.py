@@ -172,6 +172,34 @@ class TestQueryFeature:
         resp = api_client.post("/query/", json={"question": "test", "top_k": 1})
         assert len(resp.json()["sources"]) <= 1
 
+    def test_query_without_explain_omits_trace(self, api_client: TestClient, sample_txt_path: str):
+        with open(sample_txt_path, "rb") as f:
+            api_client.post("/documents/upload", files={"file": ("noexplain.txt", f, "text/plain")})
+
+        resp = api_client.post("/query/", json={"question": "What is this about?", "top_k": 3})
+        assert resp.status_code == 200
+        # Backward-compatible: trace is null when explain is not requested.
+        assert resp.json().get("trace") is None
+
+    def test_query_with_explain_returns_retrieval_trace(self, api_client: TestClient, sample_txt_path: str):
+        with open(sample_txt_path, "rb") as f:
+            api_client.post("/documents/upload", files={"file": ("explain.txt", f, "text/plain")})
+
+        resp = api_client.post(
+            "/query/",
+            json={"question": "What is this document about?", "top_k": 3, "explain": True},
+        )
+        assert resp.status_code == 200
+        trace = resp.json()["trace"]
+        assert trace is not None
+        # Each retrieval stage is serialized through the response model.
+        for stage in ("dense", "bm25", "fused", "reranked"):
+            assert stage in trace
+        assert len(trace["fused"]) >= 1
+        assert trace["fused"][0]["rank"] == 1
+        assert "rrf_score" in trace["fused"][0]
+        assert "timings_ms" in trace
+
     # Add when doc_ids filtering is fully wired in retriever/pipeline:
     # def test_query_with_doc_ids_filter_only_returns_from_those_docs(self, ...)
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -110,6 +111,7 @@ class HybridRetriever:
         top_k: int = 5,
         top_n: int = 20,
         doc_ids: list[str] | None = None,
+        trace: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """
         Hybrid search returning top_k results after RRF fusion.
@@ -117,15 +119,40 @@ class HybridRetriever:
         When *doc_ids* is provided, both the dense and BM25 sides are restricted to
         chunks belonging to those documents.
 
-        Returns a list of payload dicts with added keys:
-          _dense_rank, _bm25_rank, _rrf_score
+        When *trace* is a dict, it is populated in-place with the per-stage ranked
+        lists under keys ``dense``, ``bm25`` and ``fused`` for visualization. Passing
+        ``None`` (the default) keeps the hot path allocation-free.
+
+        Returns a list of payload dicts. Each carries the fusion bookkeeping keys
+        ``_dense_rank``, ``_bm25_rank`` and ``_rrf_score``.
         """
         # Lazily rebuild the BM25 corpus from the store on the first search after
         # a restart (no-op once the corpus is populated by ingest or a prior call).
         self.hydrate_from_store()
+
+        if trace is None:
+            # Hot path: no sub-timing, no allocation.
+            dense_results = self._dense_search(query, top_n, doc_ids)
+            bm25_results = self._bm25_search(query, top_n, doc_ids)
+            return self._fuse(dense_results, bm25_results, top_k)
+
+        # Explain path: capture per-stage ranked lists and wall-clock sub-timings.
+        t0 = time.perf_counter()
         dense_results = self._dense_search(query, top_n, doc_ids)
+        t_dense = time.perf_counter()
         bm25_results = self._bm25_search(query, top_n, doc_ids)
-        return self._fuse(dense_results, bm25_results, top_k)
+        t_bm25 = time.perf_counter()
+        fused = self._fuse(dense_results, bm25_results, top_k)
+        t_fuse = time.perf_counter()
+
+        trace["dense"] = dense_results
+        trace["bm25"] = bm25_results
+        trace["timings"] = {
+            "dense": (t_dense - t0) * 1000.0,
+            "bm25": (t_bm25 - t_dense) * 1000.0,
+            "fuse": (t_fuse - t_bm25) * 1000.0,
+        }
+        return fused
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -186,29 +213,40 @@ class HybridRetriever:
         bm25: list[dict],
         top_k: int,
     ) -> list[dict]:
-        """RRF fusion of dense and BM25 ranked lists."""
+        """RRF fusion of dense and BM25 ranked lists.
+
+        Records each item's per-lane rank (``_dense_rank``, ``_bm25_rank`` —
+        ``None`` when the item did not appear in that lane) and the summed
+        ``_rrf_score`` so callers can explain why a chunk surfaced.
+        """
         # Build identity key: prefer (doc_id, chunk_index) if available
         def _key(item: dict) -> str:
             return f"{item.get('doc_id', '')}::{item.get('chunk_index', item.get('text', '')[:50])}"
 
         scores: dict[str, float] = {}
         items: dict[str, dict] = {}
+        dense_ranks: dict[str, int] = {}
+        bm25_ranks: dict[str, int] = {}
 
         for rank, item in enumerate(dense, start=1):
             k = _key(item)
             scores[k] = scores.get(k, 0.0) + _rrf_score(rank)
             items[k] = item
+            dense_ranks[k] = rank
 
         for rank, item in enumerate(bm25, start=1):
             k = _key(item)
             scores[k] = scores.get(k, 0.0) + _rrf_score(rank)
             if k not in items:
                 items[k] = item
+            bm25_ranks[k] = rank
 
         sorted_keys = sorted(scores, key=lambda k: scores[k], reverse=True)
         results: list[dict] = []
         for k in sorted_keys[:top_k]:
             entry = dict(items[k])
+            entry["_dense_rank"] = dense_ranks.get(k)
+            entry["_bm25_rank"] = bm25_ranks.get(k)
             entry["_rrf_score"] = scores[k]
             results.append(entry)
 

@@ -7,7 +7,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 
 from rag_qa.api.routes.documents import get_pipeline
-from rag_qa.models import QueryRequest, QueryResponse, SourceChunk
+from rag_qa.models import QueryRequest, QueryResponse, RetrievalTrace, SourceChunk
 from rag_qa.pipeline import RAGPipeline
 
 logger = logging.getLogger(__name__)
@@ -26,6 +26,7 @@ async def query_documents(
             question=request.question,
             top_k=request.top_k,
             doc_ids=request.doc_ids,
+            explain=request.explain,
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -44,9 +45,13 @@ async def query_documents(
         for s in result["sources"]
     ]
 
+    trace_data = result.get("trace")
+    trace = RetrievalTrace(**trace_data) if trace_data else None
+
     return QueryResponse(
         answer=result["answer"],
         sources=sources,
         question=result["question"],
         model=result.get("model", "unknown"),
+        trace=trace,
     )

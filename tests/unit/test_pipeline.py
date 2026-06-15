@@ -239,3 +239,67 @@ class TestRAGPipelineRegistryPersistence:
     def test_delete_unknown_doc_returns_false(self, pipeline_with_mock_llm):
         """A genuinely unknown doc_id returns False even after a registry rebuild."""
         assert pipeline_with_mock_llm.delete_document("does-not-exist") is False
+
+
+class TestRAGPipelineExplainTrace:
+    """explain=True must return a faithful, non-discarded per-stage retrieval trace."""
+
+    @pytest.mark.asyncio
+    async def test_query_without_explain_has_no_trace(self, pipeline_with_mock_llm):
+        path = write_temp_txt("Neural networks learn representations. " * 20)
+        await pipeline_with_mock_llm.ingest(path, "nn.txt")
+        result = await pipeline_with_mock_llm.query("What do neural networks learn?")
+        # Backward-compatible default: no trace key payload when explain is off.
+        assert result.get("trace") is None
+
+    @pytest.mark.asyncio
+    async def test_query_with_explain_returns_full_trace(self, pipeline_with_mock_llm):
+        path = write_temp_txt("Gradient descent optimizes model parameters. " * 20)
+        await pipeline_with_mock_llm.ingest(path, "gd.txt")
+        result = await pipeline_with_mock_llm.query(
+            "How are parameters optimized?", explain=True
+        )
+
+        trace = result["trace"]
+        assert trace is not None
+        assert trace["question"] == "How are parameters optimized?"
+        # Every stage is captured, not discarded.
+        for stage in ("dense", "bm25", "fused", "reranked"):
+            assert stage in trace
+        # Retrieval actually surfaced candidates through fusion.
+        assert len(trace["fused"]) >= 1
+        first = trace["fused"][0]
+        assert first["rank"] == 1
+        assert "rrf_score" in first
+        # Fused entries retain per-lane provenance (the previously-discarded data).
+        assert "dense_rank" in first and "bm25_rank" in first
+        # Per-lane timings recorded for the stages that ran (dense/bm25/fuse from
+        # the retriever, plus rerank/generate from the pipeline).
+        timings = trace["timings_ms"]
+        assert "dense" in timings
+        assert "bm25" in timings
+        assert "fuse" in timings
+        assert all(isinstance(v, (int, float)) and v >= 0 for v in timings.values())
+
+    @pytest.mark.asyncio
+    async def test_reranked_trace_tracks_previous_rank(self, pipeline_with_mock_llm):
+        """With rerank disabled (NoOp), reranked order mirrors fusion, so previous_rank is identity."""
+        path = write_temp_txt("Reranking reorders candidate chunks by relevance. " * 25)
+        await pipeline_with_mock_llm.ingest(path, "rerank.txt")
+        result = await pipeline_with_mock_llm.query("What does reranking do?", explain=True)
+
+        reranked = result["trace"]["reranked"]
+        assert len(reranked) >= 1
+        for entry in reranked:
+            # previous_rank must resolve to a real fusion position (not None) for surfaced chunks.
+            assert entry["previous_rank"] is not None
+            assert entry["rank"] >= 1
+
+    @pytest.mark.asyncio
+    async def test_explain_on_empty_corpus_returns_empty_trace(self, pipeline_with_mock_llm):
+        """explain=True on a fresh pipeline yields a trace with empty stages, not a crash."""
+        result = await pipeline_with_mock_llm.query("anything", explain=True)
+        trace = result["trace"]
+        assert trace is not None
+        assert trace["fused"] == []
+        assert trace["reranked"] == []

@@ -98,6 +98,47 @@
       background: #0c0c0e;
     }
 
+    /* Retrieval visualization */
+    .viz-stage {
+      background: #0c0c0e;
+      border: 1px solid #27272a;
+      border-radius: var(--radius-control);
+    }
+    .viz-cand {
+      border: 1px solid #27272a;
+      border-radius: 8px;
+      background: #131316;
+    }
+    .viz-cand-dense { border-left: 2px solid #38bdf8; }
+    .viz-cand-bm25 { border-left: 2px solid #fbbf24; }
+    .viz-cand-fused { border-left: 2px solid var(--accent); }
+    .viz-cand-rank-1 { box-shadow: inset 0 0 0 1px rgb(16 185 129 / 0.35); }
+    .viz-badge {
+      font-family: 'IBM Plex Mono', ui-monospace, monospace;
+      font-size: 10px;
+      padding: 1px 6px;
+      border-radius: var(--radius-pill);
+      white-space: nowrap;
+    }
+    .viz-connector {
+      stroke: #3f3f46;
+      stroke-width: 1.5;
+      fill: none;
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      .viz-stage { animation: fadeUp 0.45s cubic-bezier(0.16, 1, 0.3, 1) both; }
+      .viz-flow-dot {
+        animation: flowDot 2.4s linear infinite;
+        offset-rotate: 0deg;
+      }
+    }
+    @keyframes flowDot {
+      from { offset-distance: 0%; opacity: 0; }
+      10% { opacity: 1; }
+      90% { opacity: 1; }
+      to { offset-distance: 100%; opacity: 0; }
+    }
+
     .skeleton {
       background: linear-gradient(90deg, #27272a 25%, #3f3f46 50%, #27272a 75%);
       background-size: 200% 100%;
@@ -240,6 +281,11 @@
                 <span class="mono text-sm w-6 text-center text-emerald-400 font-medium" id="topk-value">5</span>
               </div>
             </div>
+            <label for="explain-toggle" class="flex items-center gap-2 cursor-pointer select-none shrink-0 pb-1 group">
+              <input type="checkbox" id="explain-toggle" class="peer sr-only">
+              <span class="w-9 h-5 rounded-full bg-zinc-700 peer-checked:bg-emerald-500/80 transition-colors relative after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:w-4 after:h-4 after:rounded-full after:bg-zinc-200 after:transition-transform peer-checked:after:translate-x-4"></span>
+              <span class="text-[11px] mono text-zinc-400 group-hover:text-zinc-300">Explain retrieval</span>
+            </label>
             <button onclick="askQuestion()" class="btn-primary px-6 py-3 text-sm flex items-center justify-center gap-2 shrink-0">
               Run query
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
@@ -249,6 +295,7 @@
 
         <div id="results-container" class="mt-6 flex-1 hidden fade-up">
           <div class="border-t border-zinc-800 pt-5">
+            <div id="retrieval-viz" class="hidden mb-6"></div>
             <div class="flex items-center justify-between mb-2">
               <span class="text-[10px] font-medium text-zinc-500 mono uppercase tracking-wide">Answer</span>
               <span id="model-used" class="mono text-[10px] text-zinc-600"></span>
@@ -487,6 +534,7 @@
     async function askQuestion() {
       const input = document.getElementById('question-input');
       const topk = parseInt(document.getElementById('topk-slider').value);
+      const explain = document.getElementById('explain-toggle').checked;
       const question = input.value.trim();
       if (!question) {
         showToast('Please enter a question', 'error');
@@ -498,15 +546,23 @@
       empty.classList.add('hidden');
       const answerBox = document.getElementById('answer-box');
       const sourcesList = document.getElementById('sources-list');
+      const vizEl = document.getElementById('retrieval-viz');
       const modelEl = document.getElementById('model-used');
       answerBox.innerHTML = `<div class="space-y-2"><div class="skeleton h-4 w-full"></div><div class="skeleton h-4 w-5/6"></div><div class="skeleton h-4 w-2/3"></div></div>`;
       sourcesList.innerHTML = '';
       modelEl.textContent = '';
+      if (explain) {
+        vizEl.classList.remove('hidden');
+        vizEl.innerHTML = renderVizSkeleton();
+      } else {
+        vizEl.classList.add('hidden');
+        vizEl.innerHTML = '';
+      }
       try {
         const res = await fetch(`${API_BASE}/query/`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ question, top_k: topk })
+          body: JSON.stringify({ question, top_k: topk, explain })
         });
         if (!res.ok) {
           const errData = await res.json().catch(() => ({}));
@@ -515,6 +571,13 @@
         const data = await res.json();
         answerBox.textContent = data.answer || 'No answer generated.';
         if (data.model) modelEl.textContent = data.model;
+        if (data.trace) {
+          vizEl.classList.remove('hidden');
+          renderRetrievalViz(data.trace);
+        } else {
+          vizEl.classList.add('hidden');
+          vizEl.innerHTML = '';
+        }
         if (data.sources && data.sources.length) {
           sourcesList.innerHTML = data.sources.map(src => `
             <div class="source-row p-3 text-xs">
@@ -533,8 +596,140 @@
         input.value = '';
       } catch (err) {
         answerBox.innerHTML = `<span class="text-red-400">Error: ${err.message}</span>`;
+        vizEl.classList.add('hidden');
+        vizEl.innerHTML = '';
         showToast(err.message, 'error');
       }
+    }
+
+    function escapeHtml(s) {
+      return String(s ?? '').replace(/[&<>"']/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      })[c]);
+    }
+
+    function vizCandHtml(c, laneClass, scoreLabel, scoreVal, extraBadges = '') {
+      const top = c.rank === 1 ? ' viz-cand-rank-1' : '';
+      const preview = escapeHtml(c.text_preview || '');
+      return `
+        <div class="viz-cand ${laneClass}${top} px-2.5 py-2">
+          <div class="flex items-center justify-between gap-2 mb-1">
+            <span class="viz-badge bg-zinc-800 text-zinc-400">#${c.rank}</span>
+            <div class="flex items-center gap-1">
+              ${extraBadges}
+              <span class="viz-badge bg-emerald-500/15 text-emerald-400">${scoreLabel} ${scoreVal}</span>
+            </div>
+          </div>
+          <div class="text-[10px] text-zinc-500 mono truncate">${escapeHtml(c.filename || '')} · ch${c.chunk_index}</div>
+          ${preview ? `<div class="text-[11px] text-zinc-400 leading-snug line-clamp-2 mt-1">${preview}</div>` : ''}
+        </div>`;
+    }
+
+    function timingBadge(label, timings) {
+      const v = timings && typeof timings[label] === 'number' ? timings[label] : null;
+      if (v === null) return '';
+      return `<span class="viz-badge bg-zinc-800 text-zinc-400">${v.toFixed(1)} ms</span>`;
+    }
+
+    function stageHeader(title, sub, timingHtml) {
+      return `
+        <div class="flex items-center justify-between gap-2 mb-2">
+          <div class="min-w-0">
+            <div class="text-[11px] font-semibold text-zinc-300">${title}</div>
+            ${sub ? `<div class="text-[10px] text-zinc-500 mono truncate">${sub}</div>` : ''}
+          </div>
+          ${timingHtml || ''}
+        </div>`;
+    }
+
+    function emptyLane(msg) {
+      return `<div class="text-[10px] text-zinc-600 mono py-3 text-center">${escapeHtml(msg)}</div>`;
+    }
+
+    function renderVizSkeleton() {
+      const bar = `<div class="skeleton h-3 w-full mb-1.5"></div>`;
+      const stage = `<div class="viz-stage p-3"><div class="skeleton h-3 w-1/2 mb-3"></div>${bar}${bar}${bar}</div>`;
+      return `
+        <div class="text-[10px] font-medium text-zinc-500 mono uppercase tracking-wide mb-2">Retrieval flow</div>
+        <div class="grid sm:grid-cols-2 gap-3 mb-3">${stage}${stage}</div>
+        ${stage}`;
+    }
+
+    function renderRetrievalViz(trace) {
+      const el = document.getElementById('retrieval-viz');
+      const t = trace.timings_ms || {};
+      const dense = trace.dense || [];
+      const bm25 = trace.bm25 || [];
+      const fused = trace.fused || [];
+      const reranked = trace.reranked || [];
+      const rerankerOn = trace.reranker_enabled !== false;
+
+      const denseHtml = dense.length
+        ? dense.map((c) => vizCandHtml(c, 'viz-cand-dense', 'cos', (c.score ?? 0).toFixed(3))).join('')
+        : emptyLane('No dense matches');
+      const bm25Html = bm25.length
+        ? bm25.map((c) => vizCandHtml(c, 'viz-cand-bm25', 'bm25', (c.score ?? 0).toFixed(2))).join('')
+        : emptyLane('No keyword matches');
+
+      const fusedHtml = fused.length
+        ? fused.map((c) => {
+            const d = c.dense_rank != null ? `<span class="viz-badge bg-sky-500/15 text-sky-300">D#${c.dense_rank}</span>` : '';
+            const b = c.bm25_rank != null ? `<span class="viz-badge bg-amber-500/15 text-amber-300">K#${c.bm25_rank}</span>` : '';
+            return vizCandHtml(c, 'viz-cand-fused', 'rrf', (c.rrf_score ?? 0).toFixed(4), d + b);
+          }).join('')
+        : emptyLane('No fused candidates');
+
+      let rerankHtml;
+      if (!rerankerOn) {
+        rerankHtml = emptyLane('Reranker disabled — fused order used as-is');
+      } else if (reranked.length) {
+        rerankHtml = reranked.map((c) => {
+          let move = '';
+          if (c.previous_rank != null) {
+            const delta = c.previous_rank - c.rank;
+            if (delta > 0) move = `<span class="viz-badge bg-emerald-500/15 text-emerald-400">▲ ${delta}</span>`;
+            else if (delta < 0) move = `<span class="viz-badge bg-red-500/15 text-red-400">▼ ${-delta}</span>`;
+            else move = `<span class="viz-badge bg-zinc-800 text-zinc-500">=</span>`;
+          }
+          return vizCandHtml(c, 'viz-cand-fused', 'ce', (c.rerank_score ?? 0).toFixed(3), move);
+        }).join('');
+      } else {
+        rerankHtml = emptyLane('No reranked candidates');
+      }
+
+      const totalMs = Object.values(t).reduce((a, b) => a + (typeof b === 'number' ? b : 0), 0);
+
+      el.innerHTML = `
+        <div class="flex items-center justify-between gap-2 mb-3">
+          <span class="text-[10px] font-medium text-zinc-500 mono uppercase tracking-wide">Retrieval flow</span>
+          ${totalMs > 0 ? `<span class="viz-badge bg-zinc-800 text-zinc-400">total ${totalMs.toFixed(1)} ms</span>` : ''}
+        </div>
+
+        <div class="viz-stage p-3 mb-3">
+          <div class="text-[10px] text-zinc-500 mono uppercase tracking-wide mb-1">Query</div>
+          <div class="text-sm text-zinc-200 leading-snug">${escapeHtml(trace.question || '')}</div>
+        </div>
+
+        <div class="grid sm:grid-cols-2 gap-3 mb-3">
+          <div class="viz-stage p-3">
+            ${stageHeader('Dense lane', 'embedding · cosine', timingBadge('dense', t))}
+            <div class="space-y-1.5">${denseHtml}</div>
+          </div>
+          <div class="viz-stage p-3">
+            ${stageHeader('Sparse lane', 'BM25 · keyword', timingBadge('bm25', t))}
+            <div class="space-y-1.5">${bm25Html}</div>
+          </div>
+        </div>
+
+        <div class="viz-stage p-3 mb-3">
+          ${stageHeader('RRF fusion', 'reciprocal rank fusion of both lanes', timingBadge('fuse', t))}
+          <div class="space-y-1.5">${fusedHtml}</div>
+        </div>
+
+        <div class="viz-stage p-3">
+          ${stageHeader('Rerank', rerankerOn ? 'cross-encoder · final order' : 'skipped', timingBadge('rerank', t))}
+          <div class="space-y-1.5">${rerankHtml}</div>
+        </div>`;
     }
 
     function setupListeners() {

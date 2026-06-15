@@ -268,3 +268,81 @@ class TestBM25Rehydration:
         assert loaded == 0
         assert retriever._corpus == []
         assert retriever._hydrated is True
+
+
+class TestFusionRankBookkeeping:
+    """_fuse must surface per-lane ranks so retrieval is explainable.
+
+    The docstring promised _dense_rank / _bm25_rank / _rrf_score keys; these
+    tests pin that contract so it can never silently regress again.
+    """
+
+    def _retriever(self):
+        return HybridRetriever(make_mock_vector_store(), make_mock_embedder())
+
+    def test_fuse_records_dense_and_bm25_ranks(self):
+        r = self._retriever()
+        dense = [
+            {"doc_id": "d1", "chunk_index": 0, "text": "a", "_score": 0.9},
+            {"doc_id": "d2", "chunk_index": 0, "text": "b", "_score": 0.8},
+        ]
+        bm25 = [
+            {"doc_id": "d2", "chunk_index": 0, "text": "b", "_score": 5.0},
+            {"doc_id": "d3", "chunk_index": 0, "text": "c", "_score": 4.0},
+        ]
+        fused = r._fuse(dense, bm25, top_k=5)
+        by_key = {(f["doc_id"], f["chunk_index"]): f for f in fused}
+
+        # d1 only in dense lane (rank 1), absent from bm25
+        assert by_key[("d1", 0)]["_dense_rank"] == 1
+        assert by_key[("d1", 0)]["_bm25_rank"] is None
+        # d2 in both lanes: dense rank 2, bm25 rank 1
+        assert by_key[("d2", 0)]["_dense_rank"] == 2
+        assert by_key[("d2", 0)]["_bm25_rank"] == 1
+        # d3 only in bm25 lane (rank 2), absent from dense
+        assert by_key[("d3", 0)]["_dense_rank"] is None
+        assert by_key[("d3", 0)]["_bm25_rank"] == 2
+
+    def test_fuse_chunk_in_both_lanes_scores_highest(self):
+        r = self._retriever()
+        dense = [
+            {"doc_id": "d1", "chunk_index": 0, "text": "a", "_score": 0.9},
+            {"doc_id": "d2", "chunk_index": 0, "text": "b", "_score": 0.8},
+        ]
+        bm25 = [
+            {"doc_id": "d2", "chunk_index": 0, "text": "b", "_score": 5.0},
+        ]
+        fused = r._fuse(dense, bm25, top_k=5)
+        # d2 appears in both lanes -> summed RRF -> must rank first
+        assert (fused[0]["doc_id"], fused[0]["chunk_index"]) == ("d2", 0)
+        assert fused[0]["_rrf_score"] > fused[1]["_rrf_score"]
+
+    def test_search_without_trace_is_zero_overhead(self):
+        """When trace is None (the hot path), no sink is touched and results are unaffected."""
+        r = HybridRetriever(
+            make_mock_vector_store(hits=[dict(SAMPLE_DOCS[0], _score=0.9)]),
+            make_mock_embedder(),
+        )
+        texts = [d["text"] for d in SAMPLE_DOCS]
+        r.add_documents(texts, SAMPLE_DOCS)
+
+        results = r.search("fox", top_k=5)  # trace defaults to None
+        assert results  # still returns fused candidates
+        assert all("_rrf_score" in c for c in results)
+
+    def test_search_with_trace_populates_lane_sink(self):
+        """When a trace dict is passed, the dense and bm25 lanes are captured in-place."""
+        r = HybridRetriever(
+            make_mock_vector_store(hits=[dict(SAMPLE_DOCS[0], _score=0.9)]),
+            make_mock_embedder(),
+        )
+        texts = [d["text"] for d in SAMPLE_DOCS]
+        r.add_documents(texts, SAMPLE_DOCS)
+
+        sink: dict = {}
+        r.search("fox", top_k=5, trace=sink)
+        assert "dense" in sink and "bm25" in sink
+        # dense lane carries the mocked Qdrant hit
+        assert sink["dense"][0]["doc_id"] == "d1"
+        # bm25 lane scored the corpus for the query token "fox"
+        assert any("fox" in c["text"] for c in sink["bm25"])
