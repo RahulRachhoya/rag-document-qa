@@ -17,6 +17,7 @@ class VectorStore:
         collection_name: str = "rag_documents",
         qdrant_url: str = "",
         qdrant_api_key: str = "",
+        qdrant_path: str = "",
         embed_dim: int = 384,
     ) -> None:
         self.collection_name = collection_name
@@ -24,6 +25,7 @@ class VectorStore:
         self._client = None
         self._qdrant_url = qdrant_url
         self._qdrant_api_key = qdrant_api_key
+        self._qdrant_path = qdrant_path
 
     @property
     def client(self):
@@ -37,13 +39,16 @@ class VectorStore:
         from qdrant_client.models import Distance, VectorParams
 
         if self._qdrant_url:
-            logger.info("Connecting to Qdrant at %s", self._qdrant_url)
+            logger.info("Connecting to remote Qdrant at %s", self._qdrant_url)
             kwargs: dict[str, Any] = {"url": self._qdrant_url}
             if self._qdrant_api_key:
                 kwargs["api_key"] = self._qdrant_api_key
             client = QdrantClient(**kwargs)
+        elif self._qdrant_path:
+            logger.info("Using local on-disk Qdrant at %s", self._qdrant_path)
+            client = QdrantClient(path=self._qdrant_path)
         else:
-            logger.info("Using in-memory Qdrant")
+            logger.info("Using in-memory Qdrant (ephemeral; data lost on restart)")
             client = QdrantClient(":memory:")
 
         # Create collection if absent

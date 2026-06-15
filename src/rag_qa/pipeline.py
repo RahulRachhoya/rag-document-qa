@@ -42,6 +42,7 @@ class RAGPipeline:
             collection_name=self._settings.qdrant_collection,
             qdrant_url=self._settings.qdrant_url,
             qdrant_api_key=self._settings.qdrant_api_key,
+            qdrant_path=self._settings.qdrant_path,
             embed_dim=self._settings.embed_dim,
         )
         self._retriever = HybridRetriever(self._vector_store, self._embedder)

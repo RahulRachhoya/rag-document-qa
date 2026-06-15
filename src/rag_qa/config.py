@@ -22,9 +22,14 @@ class Settings(BaseSettings):
     embed_model: str = "all-MiniLM-L6-v2"
     embed_dim: int = 384
 
-    # Qdrant (in-memory when url is empty)
+    # Qdrant storage. Precedence (most → least specific):
+    #   1. qdrant_url set   -> remote Qdrant (Qdrant Cloud / self-hosted server)
+    #   2. qdrant_path set  -> local on-disk embedded Qdrant (durable, no server,
+    #                          ideal for free tiers with a persistent disk)
+    #   3. neither           -> in-memory (":memory:"), ephemeral; dev/tests only
     qdrant_url: str = ""
     qdrant_api_key: str = ""
+    qdrant_path: str = ""
     qdrant_collection: str = "rag_documents"
 
     # Chunking
