@@ -68,28 +68,45 @@ class HybridRetriever:
     # Search
     # ------------------------------------------------------------------
 
-    def search(self, query: str, top_k: int = 5, top_n: int = 20) -> list[dict[str, Any]]:
+    def search(
+        self,
+        query: str,
+        top_k: int = 5,
+        top_n: int = 20,
+        doc_ids: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
         """
         Hybrid search returning top_k results after RRF fusion.
+
+        When *doc_ids* is provided, both the dense and BM25 sides are restricted to
+        chunks belonging to those documents.
 
         Returns a list of payload dicts with added keys:
           _dense_rank, _bm25_rank, _rrf_score
         """
-        dense_results = self._dense_search(query, top_n)
-        bm25_results = self._bm25_search(query, top_n)
+        dense_results = self._dense_search(query, top_n, doc_ids)
+        bm25_results = self._bm25_search(query, top_n, doc_ids)
         return self._fuse(dense_results, bm25_results, top_k)
 
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _dense_search(self, query: str, top_n: int) -> list[dict]:
+    def _dense_search(
+        self, query: str, top_n: int, doc_ids: list[str] | None = None
+    ) -> list[dict]:
         """Return top_n results from Qdrant cosine search."""
         query_vec = self._embedder.embed_one(query)
-        return self._vector_store.search(query_vec, top_k=top_n)
+        return self._vector_store.search(query_vec, top_k=top_n, doc_ids=doc_ids)
 
-    def _bm25_search(self, query: str, top_n: int) -> list[dict]:
-        """Return top_n results from BM25 sparse text search."""
+    def _bm25_search(
+        self, query: str, top_n: int, doc_ids: list[str] | None = None
+    ) -> list[dict]:
+        """Return top_n results from BM25 sparse text search.
+
+        When *doc_ids* is set, only chunks from those documents are scored so the
+        sparse side honours the same filter as the dense side.
+        """
         if not self._corpus:
             return []
 
@@ -97,14 +114,22 @@ class HybridRetriever:
         tokenized_query = query.lower().split()
         scores = bm25.get_scores(tokenized_query)
 
+        allowed = set(doc_ids) if doc_ids else None
+
         # Get indices sorted by score descending
         indexed = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
         results: list[dict] = []
-        for idx, score in indexed[:top_n]:
-            if score > 0:
-                payload = dict(self._corpus_meta[idx])
-                payload["_score"] = float(score)
-                results.append(payload)
+        for idx, score in indexed:
+            if score <= 0:
+                continue
+            meta = self._corpus_meta[idx]
+            if allowed is not None and meta.get("doc_id") not in allowed:
+                continue
+            payload = dict(meta)
+            payload["_score"] = float(score)
+            results.append(payload)
+            if len(results) >= top_n:
+                break
         return results
 
     def _get_bm25(self):

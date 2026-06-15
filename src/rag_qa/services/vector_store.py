@@ -72,13 +72,25 @@ class VectorStore:
         logger.debug("Upserted %d vectors", len(points))
         return len(points)
 
-    def search(self, query_vector: list[float], top_k: int = 20) -> list[dict]:
-        """Dense cosine similarity search. Returns list of payload dicts with scores."""
+    def search(
+        self,
+        query_vector: list[float],
+        top_k: int = 20,
+        doc_ids: list[str] | None = None,
+    ) -> list[dict]:
+        """Dense cosine similarity search. Returns list of payload dicts with scores.
+
+        When *doc_ids* is provided, results are restricted to those documents via a
+        Qdrant payload filter (server-side, so recall is not lost to post-filtering).
+        """
+        query_filter = self._build_doc_filter(doc_ids)
+
         # qdrant-client >= 1.7 replaced .search() with .query_points()
         response = self.client.query_points(
             collection_name=self.collection_name,
             query=query_vector,
             limit=top_k,
+            query_filter=query_filter,
         )
         hits = response.points
         results = []
@@ -88,18 +100,43 @@ class VectorStore:
             results.append(payload)
         return results
 
+    @staticmethod
+    def _build_doc_filter(doc_ids: list[str] | None):
+        """Build a Qdrant filter that restricts to the given doc_ids (or None)."""
+        if not doc_ids:
+            return None
+        from qdrant_client.models import FieldCondition, Filter, MatchAny
+
+        return Filter(
+            must=[FieldCondition(key="doc_id", match=MatchAny(any=list(doc_ids)))]
+        )
+
     def delete_by_doc_id(self, doc_id: str) -> int:
-        """Delete all vectors belonging to *doc_id*. Returns deleted count."""
+        """Delete all vectors belonging to *doc_id*. Returns the number deleted."""
         from qdrant_client.models import FieldCondition, Filter, MatchValue
 
-        result = self.client.delete(
-            collection_name=self.collection_name,
-            points_selector=Filter(
-                must=[FieldCondition(key="doc_id", match=MatchValue(value=doc_id))]
-            ),
+        doc_filter = Filter(
+            must=[FieldCondition(key="doc_id", match=MatchValue(value=doc_id))]
         )
-        logger.info("Deleted vectors for doc_id=%s, result=%s", doc_id, result)
-        return 1  # Qdrant async delete doesn't return count directly
+
+        # Qdrant's delete response does not include a deleted count, so count the
+        # matching points up front and report that (0 when nothing matched).
+        deleted = self.client.count(
+            collection_name=self.collection_name,
+            count_filter=doc_filter,
+            exact=True,
+        ).count
+
+        if deleted == 0:
+            logger.info("No vectors found for doc_id=%s", doc_id)
+            return 0
+
+        self.client.delete(
+            collection_name=self.collection_name,
+            points_selector=doc_filter,
+        )
+        logger.info("Deleted %d vectors for doc_id=%s", deleted, doc_id)
+        return deleted
 
     def count(self) -> int:
         """Return total number of vectors in the collection."""

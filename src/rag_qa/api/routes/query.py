@@ -22,7 +22,11 @@ async def query_documents(
 ) -> QueryResponse:
     """Answer a question using the ingested documents."""
     try:
-        result = await pipeline.query(question=request.question, top_k=request.top_k)
+        result = await pipeline.query(
+            question=request.question,
+            top_k=request.top_k,
+            doc_ids=request.doc_ids,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except Exception as exc:

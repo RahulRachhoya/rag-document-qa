@@ -72,16 +72,20 @@ class RAGPipeline:
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(None, self._ingest_sync, file_path, filename)
 
-    async def query(self, question: str, top_k: int = 5) -> dict:
+    async def query(
+        self, question: str, top_k: int = 5, doc_ids: list[str] | None = None
+    ) -> dict:
         """
         Retrieve relevant chunks and generate a grounded answer.
+
+        When *doc_ids* is provided, retrieval is restricted to those documents.
 
         Returns::
 
             {"answer": str, "sources": list[dict], "scores": list[float], "question": str}
         """
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, self._query_sync, question, top_k)
+        return await loop.run_in_executor(None, self._query_sync, question, top_k, doc_ids)
 
     def warmup(self) -> None:
         """Pre-load the embedder at startup (avoids cold-start OOM/timeouts on first upload)."""
@@ -162,7 +166,9 @@ class RAGPipeline:
             "vectors_stored": stored,
         }
 
-    def _query_sync(self, question: str, top_k: int = 5) -> dict:
+    def _query_sync(
+        self, question: str, top_k: int = 5, doc_ids: list[str] | None = None
+    ) -> dict:
         logger.info("Query: %.80s", question)
         if getattr(self._settings, "low_memory", False) or not self._settings.reranker_enabled:
             top_n = self._settings.retrieval_top_k
@@ -170,7 +176,9 @@ class RAGPipeline:
             top_n = self._settings.retrieval_top_n_rerank
 
         # 1. Hybrid retrieval
-        candidates = self._retriever.search(question, top_k=top_n, top_n=top_n)
+        candidates = self._retriever.search(
+            question, top_k=top_n, top_n=top_n, doc_ids=doc_ids
+        )
         if not candidates:
             return {
                 "answer": "No documents have been ingested yet. Please upload a document first.",
