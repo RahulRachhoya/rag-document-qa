@@ -5,12 +5,15 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 try:
     import psutil
 except Exception:
     psutil = None  # best effort for memory logging on constrained envs
+
+from collections.abc import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,23 +31,10 @@ logger = logging.getLogger(__name__)
 settings = Settings()
 pipeline = RAGPipeline(settings)
 
-app = FastAPI(
-    title="RAG Document Q&A",
-    version=__version__,
-    description="Production-grade retrieval augmented generation API.",
-)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-@app.on_event("startup")
-async def startup_event() -> None:
-    """Initialise shared resources on startup."""
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Initialise shared resources on startup (replaces deprecated on_event)."""
     documents_route.set_pipeline(pipeline)
     if psutil:
         try:
@@ -70,6 +60,22 @@ async def startup_event() -> None:
             pass
 
     logger.info("RAG pipeline ready (model=%s)", settings.groq_model)
+    yield
+
+
+app = FastAPI(
+    title="RAG Document Q&A",
+    version=__version__,
+    description="Production-grade retrieval augmented generation API.",
+    lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 app.include_router(health.router)
