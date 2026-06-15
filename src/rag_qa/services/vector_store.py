@@ -148,18 +148,12 @@ class VectorStore:
         info = self.client.get_collection(self.collection_name)
         return info.points_count or 0
 
-    def list_documents(self) -> list[dict]:
-        """Reconstruct the document registry from stored vector payloads.
+    def _scroll_all_payloads(self):
+        """Yield every stored point's payload dict, paging through the collection.
 
-        Qdrant is the source of truth: every chunk carries ``doc_id`` and
-        ``filename`` in its payload, so the document list survives process
-        restarts whenever a persistent Qdrant (``QDRANT_URL``) is configured.
-
-        Returns one entry per ``doc_id``::
-
-            {"doc_id": str, "filename": str, "chunk_count": int, "created_at": str | None}
+        Shared by list_documents() and iter_all_chunks() so the scroll/paging
+        logic lives in one place.
         """
-        agg: dict[str, dict] = {}
         next_offset = None
         while True:
             points, next_offset = self.client.scroll(
@@ -170,20 +164,45 @@ class VectorStore:
                 with_vectors=False,
             )
             for p in points:
-                payload = p.payload or {}
-                doc_id = payload.get("doc_id")
-                if not doc_id:
-                    continue
-                entry = agg.get(doc_id)
-                if entry is None:
-                    agg[doc_id] = {
-                        "doc_id": doc_id,
-                        "filename": payload.get("filename", "unknown"),
-                        "chunk_count": 1,
-                        "created_at": payload.get("created_at"),
-                    }
-                else:
-                    entry["chunk_count"] += 1
+                yield p.payload or {}
             if next_offset is None:
                 break
+
+    def list_documents(self) -> list[dict]:
+        """Reconstruct the document registry from stored vector payloads.
+
+        Qdrant is the source of truth: every chunk carries ``doc_id`` and
+        ``filename`` in its payload, so the document list survives process
+        restarts whenever a persistent Qdrant (``QDRANT_URL``/``QDRANT_PATH``)
+        is configured.
+
+        Returns one entry per ``doc_id``::
+
+            {"doc_id": str, "filename": str, "chunk_count": int, "created_at": str | None}
+        """
+        agg: dict[str, dict] = {}
+        for payload in self._scroll_all_payloads():
+            doc_id = payload.get("doc_id")
+            if not doc_id:
+                continue
+            entry = agg.get(doc_id)
+            if entry is None:
+                agg[doc_id] = {
+                    "doc_id": doc_id,
+                    "filename": payload.get("filename", "unknown"),
+                    "chunk_count": 1,
+                    "created_at": payload.get("created_at"),
+                }
+            else:
+                entry["chunk_count"] += 1
         return list(agg.values())
+
+    def iter_all_chunks(self) -> list[dict]:
+        """Return every stored chunk payload (text + metadata).
+
+        Used to rehydrate the in-process BM25 index after a restart: the dense
+        side lives in persistent Qdrant, and the sparse corpus is reconstructed
+        from the same payloads so hybrid retrieval is not silently degraded to
+        dense-only until documents are re-ingested.
+        """
+        return [p for p in self._scroll_all_payloads() if p.get("text")]

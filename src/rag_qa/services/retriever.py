@@ -24,6 +24,7 @@ class HybridRetriever:
         self._corpus: list[str] = []       # raw texts for BM25
         self._corpus_meta: list[dict] = []  # corresponding payloads
         self._bm25 = None
+        self._hydrated = False  # whether we've tried to rebuild the corpus from the store
 
     # ------------------------------------------------------------------
     # Index management
@@ -31,6 +32,9 @@ class HybridRetriever:
 
     def add_documents(self, texts: list[str], payloads: list[dict]) -> None:
         """Add texts + payloads to the BM25 index (append-only)."""
+        # An explicit ingest means the corpus is now authoritative in-process;
+        # don't let a later lazy hydrate duplicate these chunks.
+        self._hydrated = True
         self._corpus.extend(texts)
         self._corpus_meta.extend(payloads)
         self._bm25 = None  # invalidate cached index
@@ -40,6 +44,38 @@ class HybridRetriever:
         self._corpus = []
         self._corpus_meta = []
         self._bm25 = None
+        self._hydrated = True  # an explicit clear is an authoritative empty state
+
+    def hydrate_from_store(self) -> int:
+        """Rebuild the BM25 corpus from the persistent vector store.
+
+        After a restart the dense side lives in Qdrant but the in-process BM25
+        corpus is empty, so hybrid search would silently degrade to dense-only.
+        This reconstructs the sparse corpus from the same payloads. Idempotent:
+        runs at most once (guarded by ``_hydrated``) and is a no-op once the
+        corpus has been populated by ingest or a prior hydrate.
+
+        Returns the number of chunks loaded.
+        """
+        if self._hydrated or self._corpus:
+            self._hydrated = True
+            return 0
+
+        try:
+            chunks = self._vector_store.iter_all_chunks()
+        except Exception:  # pragma: no cover - defensive: never break search on a scroll failure
+            logger.exception("BM25 rehydration from vector store failed; sparse side disabled")
+            self._hydrated = True
+            return 0
+
+        for payload in chunks:
+            self._corpus.append(payload["text"])
+            self._corpus_meta.append(payload)
+        self._bm25 = None
+        self._hydrated = True
+        if chunks:
+            logger.info("Rehydrated BM25 corpus from store: %d chunks", len(chunks))
+        return len(chunks)
 
     def remove_documents_by_doc_id(self, doc_id: str) -> int:
         """Remove all chunks belonging to the given doc_id from the BM25 corpus.
@@ -84,6 +120,9 @@ class HybridRetriever:
         Returns a list of payload dicts with added keys:
           _dense_rank, _bm25_rank, _rrf_score
         """
+        # Lazily rebuild the BM25 corpus from the store on the first search after
+        # a restart (no-op once the corpus is populated by ingest or a prior call).
+        self.hydrate_from_store()
         dense_results = self._dense_search(query, top_n, doc_ids)
         bm25_results = self._bm25_search(query, top_n, doc_ids)
         return self._fuse(dense_results, bm25_results, top_k)

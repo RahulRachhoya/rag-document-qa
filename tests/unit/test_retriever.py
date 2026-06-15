@@ -197,3 +197,74 @@ class TestVectorStoreDeleteCount:
         store = self._make_store(matched_count=0)
         assert store.delete_by_doc_id("missing") == 0
         store.client.delete.assert_not_called()
+
+
+class TestBM25Rehydration:
+    """After a restart the dense side lives in Qdrant but the in-process BM25
+    corpus is empty. The retriever must rebuild the sparse corpus from the store
+    on first search, exactly once, without duplicating an actively-ingested
+    corpus.
+    """
+
+    def test_hydrate_loads_chunks_from_store_when_empty(self):
+        vs = make_mock_vector_store()
+        vs.iter_all_chunks.return_value = list(SAMPLE_DOCS)
+        retriever = HybridRetriever(vs, make_mock_embedder())
+
+        loaded = retriever.hydrate_from_store()
+
+        assert loaded == len(SAMPLE_DOCS)
+        assert retriever._corpus == [d["text"] for d in SAMPLE_DOCS]
+        assert retriever._hydrated is True
+
+    def test_hydrate_is_idempotent(self):
+        vs = make_mock_vector_store()
+        vs.iter_all_chunks.return_value = list(SAMPLE_DOCS)
+        retriever = HybridRetriever(vs, make_mock_embedder())
+
+        first = retriever.hydrate_from_store()
+        second = retriever.hydrate_from_store()
+
+        assert first == len(SAMPLE_DOCS)
+        assert second == 0  # guarded: no second load
+        assert len(retriever._corpus) == len(SAMPLE_DOCS)
+        vs.iter_all_chunks.assert_called_once()
+
+    def test_add_documents_blocks_later_hydrate_to_avoid_duplication(self):
+        vs = make_mock_vector_store()
+        vs.iter_all_chunks.return_value = list(SAMPLE_DOCS)
+        retriever = HybridRetriever(vs, make_mock_embedder())
+
+        # Active-lifetime ingest populates the corpus and marks it authoritative.
+        retriever.add_documents(
+            [SAMPLE_DOCS[0]["text"]], [SAMPLE_DOCS[0]]
+        )
+        loaded = retriever.hydrate_from_store()
+
+        assert loaded == 0  # ingest already set _hydrated; no rehydrate
+        assert len(retriever._corpus) == 1  # not duplicated from the store
+        vs.iter_all_chunks.assert_not_called()
+
+    def test_search_triggers_lazy_hydration_after_restart(self):
+        # Dense side returns a hit (Qdrant survived); BM25 corpus starts empty.
+        vs = make_mock_vector_store(hits=[SAMPLE_DOCS[0]])
+        vs.iter_all_chunks.return_value = list(SAMPLE_DOCS)
+        retriever = HybridRetriever(vs, make_mock_embedder())
+
+        retriever.search("fox", top_k=5)
+
+        # The sparse corpus is now populated, so hybrid is no longer dense-only.
+        assert len(retriever._corpus) == len(SAMPLE_DOCS)
+        vs.iter_all_chunks.assert_called_once()
+
+    def test_hydrate_survives_store_scroll_failure(self):
+        vs = make_mock_vector_store(hits=[SAMPLE_DOCS[0]])
+        vs.iter_all_chunks.side_effect = RuntimeError("scroll boom")
+        retriever = HybridRetriever(vs, make_mock_embedder())
+
+        # Must not raise; sparse side simply stays empty (degrades to dense-only).
+        loaded = retriever.hydrate_from_store()
+
+        assert loaded == 0
+        assert retriever._corpus == []
+        assert retriever._hydrated is True
