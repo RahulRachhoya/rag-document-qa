@@ -39,3 +39,8 @@ models/
 
 # Ruff
 .ruff_cache/
+
+# RuFlo / claude-flow orchestration artifacts
+.claude-flow/
+.swarm/
+ruvector.db

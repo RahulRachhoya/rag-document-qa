@@ -1,0 +1,166 @@
+{
+  "config": {
+    "top_k": 5,
+    "runs": 3,
+    "llm_scored": false,
+    "low_memory": false,
+    "reranker_enabled": true,
+    "embed_model": "all-MiniLM-L6-v2",
+    "corpus_chunks": 10,
+    "num_queries": 15
+  },
+  "retrieval": {
+    "hit@k": 1.0,
+    "mrr": 1.0,
+    "avg_hits_in_topk": 1.13
+  },
+  "latency_ms": {
+    "embed": {
+      "count": 45,
+      "mean": 12.52,
+      "p50": 11.9,
+      "p95": 14.99,
+      "p99": 15.52,
+      "max": 15.91
+    },
+    "retrieve": {
+      "count": 45,
+      "mean": 12.26,
+      "p50": 11.92,
+      "p95": 14.38,
+      "p99": 15.11,
+      "max": 15.4
+    },
+    "rerank": {
+      "count": 45,
+      "mean": 749.89,
+      "p50": 126.01,
+      "p95": 135.03,
+      "p99": 15844.14,
+      "max": 28184.34
+    },
+    "generate": {
+      "count": 0,
+      "mean": 0.0,
+      "p50": 0.0,
+      "p95": 0.0,
+      "p99": 0.0,
+      "max": 0.0
+    },
+    "end_to_end": {
+      "count": 45,
+      "mean": 774.69,
+      "p50": 150.89,
+      "p95": 160.52,
+      "p99": 15868.99,
+      "max": 28210.08
+    }
+  },
+  "per_query": [
+    {
+      "id": "q1",
+      "question": "Who was the first person to walk on the Moon?",
+      "hit": 1.0,
+      "reciprocal_rank": 1.0,
+      "hits_in_topk": 1
+    },
+    {
+      "id": "q2",
+      "question": "What was the name of the Apollo 11 lunar module?",
+      "hit": 1.0,
+      "reciprocal_rank": 1.0,
+      "hits_in_topk": 1
+    },
+    {
+      "id": "q3",
+      "question": "How many space agencies are involved in the International Space Station?",
+      "hit": 1.0,
+      "reciprocal_rank": 1.0,
+      "hits_in_topk": 2
+    },
+    {
+      "id": "q4",
+      "question": "At what altitude does the ISS orbit Earth?",
+      "hit": 1.0,
+      "reciprocal_rank": 1.0,
+      "hits_in_topk": 1
+    },
+    {
+      "id": "q5",
+      "question": "Where did the Perseverance rover land on Mars?",
+      "hit": 1.0,
+      "reciprocal_rank": 1.0,
+      "hits_in_topk": 1
+    },
+    {
+      "id": "q6",
+      "question": "What was the first aircraft to fly on another planet?",
+      "hit": 1.0,
+      "reciprocal_rank": 1.0,
+      "hits_in_topk": 1
+    },
+    {
+      "id": "q7",
+      "question": "When was the James Webb Space Telescope launched?",
+      "hit": 1.0,
+      "reciprocal_rank": 1.0,
+      "hits_in_topk": 1
+    },
+    {
+      "id": "q8",
+      "question": "What is the most distant human-made object from Earth?",
+      "hit": 1.0,
+      "reciprocal_rank": 1.0,
+      "hits_in_topk": 1
+    },
+    {
+      "id": "q9",
+      "question": "What was the first general-purpose electronic digital computer?",
+      "hit": 1.0,
+      "reciprocal_rank": 1.0,
+      "hits_in_topk": 1
+    },
+    {
+      "id": "q10",
+      "question": "Who invented the transistor and where?",
+      "hit": 1.0,
+      "reciprocal_rank": 1.0,
+      "hits_in_topk": 2
+    },
+    {
+      "id": "q11",
+      "question": "What was the first commercially available microprocessor?",
+      "hit": 1.0,
+      "reciprocal_rank": 1.0,
+      "hits_in_topk": 1
+    },
+    {
+      "id": "q12",
+      "question": "Who invented the World Wide Web and when?",
+      "hit": 1.0,
+      "reciprocal_rank": 1.0,
+      "hits_in_topk": 1
+    },
+    {
+      "id": "q13",
+      "question": "What three core technologies is the Web built on?",
+      "hit": 1.0,
+      "reciprocal_rank": 1.0,
+      "hits_in_topk": 1
+    },
+    {
+      "id": "q14",
+      "question": "Who created the Python programming language?",
+      "hit": 1.0,
+      "reciprocal_rank": 1.0,
+      "hits_in_topk": 1
+    },
+    {
+      "id": "q15",
+      "question": "What does the Voyager Golden Record contain?",
+      "hit": 1.0,
+      "reciprocal_rank": 1.0,
+      "hits_in_topk": 1
+    }
+  ]
+}

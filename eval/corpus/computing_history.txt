@@ -1,0 +1,11 @@
+The first general-purpose electronic digital computer was ENIAC, completed in 1945 at the University of Pennsylvania. It weighed about 30 tons and used roughly 18,000 vacuum tubes. ENIAC was designed primarily to calculate artillery firing tables for the United States Army.
+
+The transistor was invented at Bell Labs in 1947 by John Bardeen, Walter Brattain, and William Shockley. This invention earned them the Nobel Prize in Physics in 1956 and revolutionized electronics by replacing bulky, power-hungry vacuum tubes.
+
+The integrated circuit was independently invented by Jack Kilby of Texas Instruments in 1958 and Robert Noyce of Fairchild Semiconductor in 1959. The integrated circuit allowed many transistors to be placed on a single chip, paving the way for modern microprocessors.
+
+The Intel 4004, released in 1971, was the first commercially available microprocessor. It was a 4-bit processor running at 740 kHz and contained about 2,300 transistors. The microprocessor made personal computing possible.
+
+The World Wide Web was invented by Tim Berners-Lee in 1989 while he was working at CERN. He wrote the first web browser and web server in 1990. The Web is built on three core technologies: HTML for structuring content, HTTP for transferring data, and URLs for addressing resources. The Web is distinct from the Internet, which is the underlying global network of computers.
+
+Python was created by Guido van Rossum and first released in 1991. It emphasizes code readability and uses significant indentation. Python has become one of the most popular languages for data science, machine learning, and web development.

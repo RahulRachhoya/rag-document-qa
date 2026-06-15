@@ -1,0 +1,110 @@
+{
+  "description": "Labeled Q&A eval set for rag-document-qa. 'relevant_terms' must appear in a retrieved chunk for it to count as a hit. 'expected_doc' is the source file (without extension). 'answer_must_contain' is used for generation faithfulness when an LLM is available.",
+  "items": [
+    {
+      "id": "q1",
+      "question": "Who was the first person to walk on the Moon?",
+      "expected_doc": "space_exploration",
+      "relevant_terms": ["Neil Armstrong", "first person", "lunar surface"],
+      "answer_must_contain": ["Armstrong"]
+    },
+    {
+      "id": "q2",
+      "question": "What was the name of the Apollo 11 lunar module?",
+      "expected_doc": "space_exploration",
+      "relevant_terms": ["lunar module", "Eagle"],
+      "answer_must_contain": ["Eagle"]
+    },
+    {
+      "id": "q3",
+      "question": "How many space agencies are involved in the International Space Station?",
+      "expected_doc": "space_exploration",
+      "relevant_terms": ["five space agencies", "NASA", "Roscosmos"],
+      "answer_must_contain": ["five"]
+    },
+    {
+      "id": "q4",
+      "question": "At what altitude does the ISS orbit Earth?",
+      "expected_doc": "space_exploration",
+      "relevant_terms": ["400 kilometers", "altitude"],
+      "answer_must_contain": ["400"]
+    },
+    {
+      "id": "q5",
+      "question": "Where did the Perseverance rover land on Mars?",
+      "expected_doc": "space_exploration",
+      "relevant_terms": ["Jezero Crater", "Perseverance"],
+      "answer_must_contain": ["Jezero"]
+    },
+    {
+      "id": "q6",
+      "question": "What was the first aircraft to fly on another planet?",
+      "expected_doc": "space_exploration",
+      "relevant_terms": ["Ingenuity", "helicopter", "powered flight"],
+      "answer_must_contain": ["Ingenuity"]
+    },
+    {
+      "id": "q7",
+      "question": "When was the James Webb Space Telescope launched?",
+      "expected_doc": "space_exploration",
+      "relevant_terms": ["James Webb", "December 25, 2021"],
+      "answer_must_contain": ["2021"]
+    },
+    {
+      "id": "q8",
+      "question": "What is the most distant human-made object from Earth?",
+      "expected_doc": "space_exploration",
+      "relevant_terms": ["Voyager 1", "most distant"],
+      "answer_must_contain": ["Voyager 1"]
+    },
+    {
+      "id": "q9",
+      "question": "What was the first general-purpose electronic digital computer?",
+      "expected_doc": "computing_history",
+      "relevant_terms": ["ENIAC", "first general-purpose"],
+      "answer_must_contain": ["ENIAC"]
+    },
+    {
+      "id": "q10",
+      "question": "Who invented the transistor and where?",
+      "expected_doc": "computing_history",
+      "relevant_terms": ["transistor", "Bell Labs", "Bardeen"],
+      "answer_must_contain": ["Bell Labs"]
+    },
+    {
+      "id": "q11",
+      "question": "What was the first commercially available microprocessor?",
+      "expected_doc": "computing_history",
+      "relevant_terms": ["Intel 4004", "first commercially available microprocessor"],
+      "answer_must_contain": ["4004"]
+    },
+    {
+      "id": "q12",
+      "question": "Who invented the World Wide Web and when?",
+      "expected_doc": "computing_history",
+      "relevant_terms": ["Tim Berners-Lee", "World Wide Web", "1989"],
+      "answer_must_contain": ["Berners-Lee"]
+    },
+    {
+      "id": "q13",
+      "question": "What three core technologies is the Web built on?",
+      "expected_doc": "computing_history",
+      "relevant_terms": ["HTML", "HTTP", "URLs"],
+      "answer_must_contain": ["HTML", "HTTP"]
+    },
+    {
+      "id": "q14",
+      "question": "Who created the Python programming language?",
+      "expected_doc": "computing_history",
+      "relevant_terms": ["Python", "Guido van Rossum", "1991"],
+      "answer_must_contain": ["Guido van Rossum"]
+    },
+    {
+      "id": "q15",
+      "question": "What does the Voyager Golden Record contain?",
+      "expected_doc": "space_exploration",
+      "relevant_terms": ["Golden Record", "sounds and images", "diversity of life"],
+      "answer_must_contain": ["sounds", "images"]
+    }
+  ]
+}
