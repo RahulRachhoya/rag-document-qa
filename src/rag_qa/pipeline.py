@@ -88,11 +88,21 @@ class RAGPipeline:
         return await loop.run_in_executor(None, self._query_sync, question, top_k, doc_ids)
 
     def warmup(self) -> None:
-        """Pre-load the embedder at startup (avoids cold-start OOM/timeouts on first upload)."""
+        """Pre-load models at startup (avoids cold-start OOM/timeouts on first request).
+
+        Loads the embedder always, and the cross-encoder reranker when enabled, so the
+        first user query does not pay the model-load + first-inference cost (which can be
+        tens of seconds for the cross-encoder).
+        """
         backend = "FastEmbed" if self._settings.low_memory else "SentenceTransformer"
         logger.info("Warming up embedder (%s, model=%s)", backend, self._settings.embed_model)
         self._embedder.embed_one("warmup")
         logger.info("Embedder warmup complete (dim=%d)", self._embedder.dimension)
+
+        if self._settings.reranker_enabled and not isinstance(self._reranker, NoOpReranker):
+            logger.info("Warming up reranker (model=%s)", self._settings.reranker_model)
+            self._reranker.rerank("warmup", [{"text": "warmup"}], top_k=1)
+            logger.info("Reranker warmup complete")
 
     def list_documents(self) -> list[dict]:
         """Return metadata for all ingested documents."""

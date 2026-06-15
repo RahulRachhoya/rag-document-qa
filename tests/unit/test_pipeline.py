@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import tempfile
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -48,6 +47,7 @@ def pipeline_with_mock_llm():
         # embed() returns list of float vectors; embed_one() returns a single vector
         mock_embedder_instance.embed.side_effect = lambda texts: [[0.1] * 384 for _ in texts]
         mock_embedder_instance.embed_one.return_value = [0.1] * 384
+        mock_embedder_instance.dimension = 384
         MockEmbedder.return_value = mock_embedder_instance
 
         p = RAGPipeline(settings)
@@ -143,3 +143,46 @@ class TestRAGPipelineQuery:
         for s in result["sources"]:
             assert s["doc_id"] == keep_doc_id
             assert "Python" in s.get("text", "") or "programming" in s.get("text", "").lower()
+
+
+class TestRAGPipelineWarmup:
+    def test_warmup_loads_embedder(self, pipeline_with_mock_llm):
+        """warmup() must touch the embedder so first request avoids cold-start cost."""
+        pipeline_with_mock_llm.warmup()
+        pipeline_with_mock_llm._embedder.embed_one.assert_called()
+
+    def test_warmup_loads_reranker_when_enabled(self):
+        """Regression: warmup() must pre-load the cross-encoder when reranking is enabled.
+
+        Previously the cross-encoder lazy-loaded on the first query, causing a
+        multi-second (observed ~28s) stall on the first user request after cold start.
+        """
+        settings = make_test_settings(reranker_enabled=True)
+        with (
+            patch("rag_qa.pipeline.GroqLLM") as MockLLM,
+            patch("rag_qa.pipeline.create_embedder") as MockEmbedder,
+            patch("rag_qa.pipeline.CrossEncoderReranker") as MockReranker,
+        ):
+            MockLLM.return_value = MagicMock()
+            mock_embedder = MagicMock()
+            mock_embedder.embed_one.return_value = [0.1] * 384
+            mock_embedder.dimension = 384
+            MockEmbedder.return_value = mock_embedder
+
+            mock_reranker = MagicMock()
+            MockReranker.return_value = mock_reranker
+
+            p = RAGPipeline(settings)
+            p.warmup()
+
+            # The reranker must be exercised during warmup (triggers model load).
+            mock_reranker.rerank.assert_called()
+
+    def test_warmup_skips_reranker_when_disabled(self, pipeline_with_mock_llm):
+        """When reranking is off, warmup() must not attempt to load a cross-encoder."""
+        # Default fixture has reranker_enabled=False -> NoOpReranker.
+        from rag_qa.services.reranker import NoOpReranker
+
+        assert isinstance(pipeline_with_mock_llm._reranker, NoOpReranker)
+        # Should not raise; NoOpReranker.rerank is a harmless pass-through.
+        pipeline_with_mock_llm.warmup()
