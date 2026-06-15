@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from rag_qa.services.retriever import HybridRetriever, _rrf_score
-
 
 # ---------------------------------------------------------------------------
 # RRF formula tests
@@ -130,3 +129,71 @@ class TestHybridRetrieverFusion:
         retriever = HybridRetriever(vs, emb)
         results = retriever.search("anything", top_k=5)
         assert len(results) >= 1
+
+
+class TestHybridRetrieverDocIdFilter:
+    """The doc_ids filter must restrict BOTH the dense and BM25 sides."""
+
+    def test_bm25_filters_to_requested_doc_ids(self):
+        vs = make_mock_vector_store()
+        emb = make_mock_embedder()
+        retriever = HybridRetriever(vs, emb)
+        texts = [d["text"] for d in SAMPLE_DOCS]
+        retriever.add_documents(texts, SAMPLE_DOCS)
+
+        # "the" appears in both d1 chunks; restrict to d2 only -> no BM25 hits for "the"
+        results = retriever._bm25_search("the", top_n=10, doc_ids=["d2"])
+        assert all(r["doc_id"] == "d2" for r in results)
+
+    def test_bm25_no_filter_returns_all_matches(self):
+        vs = make_mock_vector_store()
+        emb = make_mock_embedder()
+        retriever = HybridRetriever(vs, emb)
+        texts = [d["text"] for d in SAMPLE_DOCS]
+        retriever.add_documents(texts, SAMPLE_DOCS)
+
+        results = retriever._bm25_search("the", top_n=10)
+        # Both d1 chunks contain "the"; no filter -> both eligible
+        assert any(r["doc_id"] == "d1" for r in results)
+
+    def test_search_forwards_doc_ids_to_vector_store(self):
+        """The dense side must pass doc_ids through to vector_store.search()."""
+        vs = make_mock_vector_store(hits=[SAMPLE_DOCS[0]])
+        emb = make_mock_embedder()
+        retriever = HybridRetriever(vs, emb)
+        retriever.search("fox", top_k=5, doc_ids=["d1"])
+        # Assert the dense store was called with the doc_ids kwarg
+        _, kwargs = vs.search.call_args
+        assert kwargs.get("doc_ids") == ["d1"]
+
+    def test_search_default_doc_ids_is_none(self):
+        vs = make_mock_vector_store(hits=[SAMPLE_DOCS[0]])
+        emb = make_mock_embedder()
+        retriever = HybridRetriever(vs, emb)
+        retriever.search("fox", top_k=5)
+        _, kwargs = vs.search.call_args
+        assert kwargs.get("doc_ids") is None
+
+
+class TestVectorStoreDeleteCount:
+    """delete_by_doc_id must return the real matched count, never a hardcoded 1."""
+
+    def _make_store(self, matched_count: int):
+        from rag_qa.services.vector_store import VectorStore
+
+        store = VectorStore.__new__(VectorStore)  # bypass __init__ (no live Qdrant)
+        store.collection_name = "test"
+        # `client` is a lazy property backed by `_client`; inject a mock there.
+        store._client = MagicMock()
+        store._client.count.return_value = MagicMock(count=matched_count)
+        return store
+
+    def test_returns_real_count_when_multiple_chunks(self):
+        store = self._make_store(matched_count=7)
+        assert store.delete_by_doc_id("d1") == 7
+        store.client.delete.assert_called_once()
+
+    def test_returns_zero_and_skips_delete_when_no_match(self):
+        store = self._make_store(matched_count=0)
+        assert store.delete_by_doc_id("missing") == 0
+        store.client.delete.assert_not_called()
