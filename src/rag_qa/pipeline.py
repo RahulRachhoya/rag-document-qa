@@ -105,15 +105,46 @@ class RAGPipeline:
             logger.info("Reranker warmup complete")
 
     def list_documents(self) -> list[dict]:
-        """Return metadata for all ingested documents."""
+        """Return metadata for all ingested documents.
+
+        The in-memory cache is authoritative within a process lifetime. After a
+        restart the cache is empty, so we reconstruct the registry from Qdrant
+        payloads (the persistent source of truth when QDRANT_URL is set) and
+        repopulate the cache. With an in-memory Qdrant this still correctly
+        returns an empty list after restart, matching reality.
+        """
+        if self._docs:
+            return list(self._docs.values())
+
+        try:
+            rebuilt = self._vector_store.list_documents()
+        except Exception:  # pragma: no cover - defensive: never fail the list endpoint
+            logger.exception("Failed to reconstruct document registry from vector store")
+            return []
+
+        for entry in rebuilt:
+            self._docs[entry["doc_id"]] = entry
         return list(self._docs.values())
 
     def delete_document(self, doc_id: str) -> bool:
-        """Delete a document and its vectors from the store."""
-        if doc_id not in self._docs:
+        """Delete a document and its vectors from the store.
+
+        Works for documents ingested in the current process (cache hit) and for
+        documents that survive in a persistent Qdrant across a restart (the
+        cache is empty but the vectors still exist).
+        """
+        known = doc_id in self._docs
+        if not known:
+            # Cache miss: the doc may still live in a persistent Qdrant. Rebuild
+            # the registry once and re-check before reporting "not found".
+            self.list_documents()
+            known = doc_id in self._docs
+
+        if not known:
             return False
+
         self._vector_store.delete_by_doc_id(doc_id)
-        del self._docs[doc_id]
+        self._docs.pop(doc_id, None)
         # Remove the deleted doc's chunks from the BM25 index (dense side already cleaned in Qdrant)
         self._retriever.remove_documents_by_doc_id(doc_id)
         return True
@@ -124,6 +155,7 @@ class RAGPipeline:
 
     def _ingest_sync(self, file_path: str, filename: str) -> dict:
         doc_id = str(uuid.uuid4())
+        created_at = datetime.now(UTC).isoformat()
         logger.info("Ingesting %s (doc_id=%s)", filename, doc_id)
 
         # 1. Load
@@ -141,7 +173,8 @@ class RAGPipeline:
         texts = [c.text for c in chunks]
         vectors = self._embedder.embed(texts)
 
-        # 4. Build payloads
+        # 4. Build payloads (created_at is stored on every chunk so the document
+        #    registry can be reconstructed from Qdrant after a process restart)
         payloads = [
             {
                 "doc_id": doc_id,
@@ -150,6 +183,7 @@ class RAGPipeline:
                 "text": c.text,
                 "start_char": c.start_char,
                 "end_char": c.end_char,
+                "created_at": created_at,
             }
             for c in chunks
         ]
@@ -165,7 +199,7 @@ class RAGPipeline:
             "doc_id": doc_id,
             "filename": filename,
             "chunk_count": len(chunks),
-            "created_at": datetime.now(UTC).isoformat(),
+            "created_at": created_at,
         }
 
         logger.info("Ingested %s: %d chunks, %d vectors", filename, len(chunks), stored)

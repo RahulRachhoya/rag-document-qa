@@ -186,3 +186,56 @@ class TestRAGPipelineWarmup:
         assert isinstance(pipeline_with_mock_llm._reranker, NoOpReranker)
         # Should not raise; NoOpReranker.rerank is a harmless pass-through.
         pipeline_with_mock_llm.warmup()
+
+
+class TestRAGPipelineRegistryPersistence:
+    """The document registry must survive a process restart when Qdrant persists.
+
+    The in-memory ``_docs`` cache is lost on restart, but every chunk payload
+    carries doc_id/filename/created_at, so ``list_documents`` reconstructs the
+    registry from the vector store and ``delete_document`` still resolves docs
+    that exist only in persistent Qdrant.
+    """
+
+    @pytest.mark.asyncio
+    async def test_list_documents_rebuilds_from_store_after_cache_loss(
+        self, pipeline_with_mock_llm
+    ):
+        path = write_temp_txt("Persistence across restart is critical. " * 12)
+        result = await pipeline_with_mock_llm.ingest(path, "persist.txt")
+        doc_id = result["doc_id"]
+
+        # Simulate a process restart: the in-memory registry is gone, but the
+        # vectors remain in the (in-memory-for-test) Qdrant collection.
+        pipeline_with_mock_llm._docs.clear()
+        assert pipeline_with_mock_llm._docs == {}
+
+        docs = pipeline_with_mock_llm.list_documents()
+        ids = [d["doc_id"] for d in docs]
+        assert doc_id in ids
+        rebuilt = next(d for d in docs if d["doc_id"] == doc_id)
+        assert rebuilt["filename"] == "persist.txt"
+        assert rebuilt["chunk_count"] >= 1
+        assert rebuilt["created_at"] is not None
+        # The cache must be repopulated so subsequent calls are cheap.
+        assert doc_id in pipeline_with_mock_llm._docs
+
+    @pytest.mark.asyncio
+    async def test_delete_resolves_doc_from_store_after_cache_loss(
+        self, pipeline_with_mock_llm
+    ):
+        path = write_temp_txt("This survives restart then gets deleted. " * 12)
+        result = await pipeline_with_mock_llm.ingest(path, "ghost.txt")
+        doc_id = result["doc_id"]
+
+        # Restart: registry cache wiped, vectors still in the store.
+        pipeline_with_mock_llm._docs.clear()
+
+        # delete_document must rebuild from the store, find the doc, and delete it.
+        deleted = pipeline_with_mock_llm.delete_document(doc_id)
+        assert deleted is True
+        assert all(d["doc_id"] != doc_id for d in pipeline_with_mock_llm.list_documents())
+
+    def test_delete_unknown_doc_returns_false(self, pipeline_with_mock_llm):
+        """A genuinely unknown doc_id returns False even after a registry rebuild."""
+        assert pipeline_with_mock_llm.delete_document("does-not-exist") is False
