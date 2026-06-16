@@ -71,7 +71,7 @@ class RAGPipeline:
 
             {"doc_id": str, "chunks": int, "vectors_stored": int, "filename": str}
         """
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._ingest_sync, file_path, filename)
 
     async def query(
@@ -88,7 +88,7 @@ class RAGPipeline:
 
             {"answer": str, "sources": list[dict], "scores": list[float], "question": str}
         """
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
             None, self._query_sync, question, top_k, doc_ids, explain
         )
