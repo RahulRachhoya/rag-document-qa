@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from typing import Self
 
-from pydantic import model_validator, field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -50,9 +50,9 @@ class Settings(BaseSettings):
     reranker_enabled: bool = False
 
     # CORS
-    # Comma-separated list of allowed origins. If not set, defaults to ["*"].
+    # Comma-separated list of allowed origins. If not set, defaults to [] for security.
     # Example: "https://example.com,https://app.example.com"
-    cors_origins: str = ""
+    cors_origins: list[str] = []
 
     # API
     upload_dir: str = "uploads"

@@ -55,6 +55,8 @@ class RAGPipeline:
         self._llm = GroqLLM(
             api_key=self._settings.groq_api_key,
             model=self._settings.groq_model,
+            temperature=self._settings.llm_temperature,
+            max_tokens=self._settings.llm_max_tokens,
         )
         # In-memory doc registry (doc_id -> metadata)
         self._docs: dict[str, dict] = {}
