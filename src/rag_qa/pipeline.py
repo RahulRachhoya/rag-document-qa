@@ -55,6 +55,8 @@ class RAGPipeline:
         self._llm = GroqLLM(
             api_key=self._settings.groq_api_key,
             model=self._settings.groq_model,
+            temperature=self._settings.llm_temperature,
+            max_tokens=self._settings.llm_max_tokens,
         )
         # In-memory doc registry (doc_id -> metadata)
         self._docs: dict[str, dict] = {}
@@ -71,7 +73,7 @@ class RAGPipeline:
 
             {"doc_id": str, "chunks": int, "vectors_stored": int, "filename": str}
         """
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, self._ingest_sync, file_path, filename)
 
     async def query(
@@ -88,7 +90,7 @@ class RAGPipeline:
 
             {"answer": str, "sources": list[dict], "scores": list[float], "question": str}
         """
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
             None, self._query_sync, question, top_k, doc_ids, explain
         )

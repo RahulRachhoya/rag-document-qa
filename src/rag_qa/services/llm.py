@@ -6,6 +6,11 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
+class LLMError(RuntimeError):
+    """Raised when answer generation fails (config, network, or upstream API)."""
+
+
 _SYSTEM_PROMPT = """You are a helpful document assistant.
 Answer the user's question using ONLY the context provided below.
 If the context does not contain enough information, say so clearly.
@@ -50,22 +55,39 @@ class GroqLLM:
         return self._client
 
     def generate(self, question: str, context_chunks: list[dict]) -> str:
-        """Generate an answer grounded in *context_chunks*."""
+        """Generate an answer grounded in *context_chunks*.
+
+        Raises:
+            LLMError: if the API key is missing, the Groq SDK cannot be
+                imported, or the upstream completion call fails.
+        """
         if not self.api_key:
-            raise ValueError("GROQ_API_KEY is not set. Set it in .env or environment.")
+            raise LLMError("GROQ_API_KEY is not set. Set it in .env or environment.")
 
         user_message = _build_prompt(question, context_chunks)
 
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {"role": "user", "content": user_message},
-            ],
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-        )
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": _SYSTEM_PROMPT},
+                    {"role": "user", "content": user_message},
+                ],
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+            )
+        except ImportError as exc:
+            raise LLMError(
+                "The 'groq' package is not installed. Run: pip install groq"
+            ) from exc
+        except Exception as exc:  # noqa: BLE001 - normalize SDK/network errors
+            logger.exception("Groq completion failed for model %s", self.model)
+            raise LLMError(f"Answer generation failed: {exc}") from exc
 
-        answer = response.choices[0].message.content or ""
+        try:
+            answer = response.choices[0].message.content or ""
+        except (AttributeError, IndexError, KeyError) as exc:
+            raise LLMError("Groq returned an unexpected response shape.") from exc
+
         logger.debug("LLM generated %d chars for question: %.60s...", len(answer), question)
         return answer.strip()

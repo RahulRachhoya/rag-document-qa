@@ -49,7 +49,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         except Exception:
             pass
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     await loop.run_in_executor(None, pipeline.warmup)
 
     if psutil:
@@ -70,9 +70,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Use CORS origins from environment variable, default to empty list (secure by default)
+# CORS_ORIGINS env var accepts comma-separated values, e.g.: "https://example.com,https://app.example.com"
+allow_origins = settings.cors_origins if settings.cors_origins else []
+if not allow_origins:
+    logger.warning("CORS_ORIGINS not set; no cross-origin requests will be allowed.")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allow_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )

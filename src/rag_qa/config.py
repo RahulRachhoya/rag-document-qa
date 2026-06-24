@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from typing import Self
 
-from pydantic import model_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     # LLM
     groq_api_key: str = ""
     groq_model: str = "llama-3.3-70b-versatile"
+    llm_temperature: float = 0.2
+    llm_max_tokens: int = 1024
 
     # Embedding
     embed_model: str = "all-MiniLM-L6-v2"
@@ -47,9 +49,23 @@ class Settings(BaseSettings):
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     reranker_enabled: bool = False
 
+    # CORS
+    # Comma-separated list of allowed origins. If not set, defaults to [] for security.
+    # Example: "https://example.com,https://app.example.com"
+    cors_origins: list[str] = []
+
     # API
     upload_dir: str = "uploads"
     max_file_size_mb: int = 20
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def _parse_cors_origins(cls, v):
+        if not v:
+            return []
+        if isinstance(v, str):
+            return [origin.strip() for origin in v.split(",") if origin.strip()]
+        return v
 
     @model_validator(mode="after")
     def _apply_platform_defaults(self) -> Self:
